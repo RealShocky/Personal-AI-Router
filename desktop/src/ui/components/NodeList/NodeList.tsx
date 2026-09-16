@@ -13,6 +13,7 @@ import { CONNECTIONS_WIDTH } from '@/ui/constants/app'
 import OfflineNode from './OfflineNode'
 import FabricStatusCard from './FabricStatusCard'
 import FabricTrainingCard from './FabricTrainingCard'
+import FabricInferenceCard from './FabricInferenceCard'
 
 const SCROLLBAR_OPTIONS = {
     scrollbars: { autoHide: 'leave', autoHideDelay: 800 }
@@ -41,6 +42,7 @@ function NodeList() {
     return (
         <Stack className="grow min-w-0 h-full max-w-300">
             <FabricStatusCard />
+            <FabricInferenceCard />
             <FabricTrainingCard />
             <OverlayScrollbarsComponent
                 className="node-list-scroll-container"

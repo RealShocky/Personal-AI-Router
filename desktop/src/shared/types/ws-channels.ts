@@ -35,7 +35,7 @@ import type { ServiceError } from '@/shared/types/errors'
 import type { NodeItem } from '@/shared/types/nodes'
 import type { NodeItemMetrics } from '@/shared/types/metrics'
 import type { Workload } from '@/shared/types/workloads'
-import type { FabricStatus, FabricTrainingRequest, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingNode } from '@/shared/types/fabric'
+import type { FabricStatus, FabricTrainingRequest, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingNode, FabricInferenceRequest, FabricExecution } from '@/shared/types/fabric'
 import type {
     AvailableNode,
     ClusterIdentityPayload,
@@ -92,6 +92,9 @@ export interface WsInvokeChannelMap {
 
     // Distributed compute fabric
     'fabric:get-status': { request: void; response: FabricStatus }
+    'fabric:inference-start': { request: FabricInferenceRequest; response: FabricExecution }
+    'fabric:inference-status': { request: { jobId: string }; response: FabricExecution }
+    'fabric:inference-stop': { request: { jobId: string }; response: { stopped: boolean } }
     'fabric:training-start': { request: FabricTrainingRequest; response: FabricTrainingExecution[] }
     'fabric:training-status': { request: { jobId: string }; response: FabricTrainingGroupStatus }
     'fabric:training-checkpoint': { request: FabricCheckpoint; response: FabricCheckpoint }

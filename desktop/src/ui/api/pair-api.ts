@@ -13,7 +13,7 @@ import type { NodeItem } from '@/shared/types/nodes'
 import type { ServiceError } from '@/shared/types/errors'
 import type { NodeItemMetrics } from '@/shared/types/metrics'
 import type { Workload } from '@/shared/types/workloads'
-import type { FabricStatus, FabricTrainingRequest, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingNode } from '@/shared/types/fabric'
+import type { FabricStatus, FabricTrainingRequest, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingNode, FabricInferenceRequest, FabricExecution } from '@/shared/types/fabric'
 import type { AppInitialSnapshot, ClusterInitialSnapshot } from '@/shared/types/bootstrap'
 
 // ---------------------------------------------------------------------------
@@ -83,6 +83,9 @@ export interface IDiscoveryApi {
 export interface IFabricApi {
     /** Read-only coordinator snapshot for the logical distributed inference fabric. */
     getStatus(): Promise<FabricStatus>
+    startInference(request: FabricInferenceRequest): Promise<FabricExecution>
+    getInferenceStatus(jobId: string): Promise<FabricExecution>
+    stopInference(jobId: string): Promise<{ stopped: boolean }>
     startTraining(request: FabricTrainingRequest): Promise<FabricTrainingExecution[]>
     getTrainingStatus(jobId: string): Promise<FabricTrainingGroupStatus>
     saveTrainingCheckpoint(checkpoint: FabricCheckpoint): Promise<FabricCheckpoint>
@@ -183,6 +186,9 @@ export function createPairApi(transport: ServiceTransport): IPairApi {
         engines: createEngineApi(transport),
         fabric: {
             getStatus: () => transport.invoke('fabric:get-status'),
+            startInference: request => transport.invoke('fabric:inference-start', request),
+            getInferenceStatus: jobId => transport.invoke('fabric:inference-status', { jobId }),
+            stopInference: jobId => transport.invoke('fabric:inference-stop', { jobId }),
             startTraining: request => transport.invoke('fabric:training-start', request),
             getTrainingStatus: jobId => transport.invoke('fabric:training-status', { jobId }),
             saveTrainingCheckpoint: checkpoint => transport.invoke('fabric:training-checkpoint', checkpoint),

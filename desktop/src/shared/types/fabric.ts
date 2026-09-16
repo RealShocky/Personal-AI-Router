@@ -35,6 +35,29 @@ export interface FabricExecution {
     httpPort: number
 }
 
+export interface FabricGroupRequest {
+    groupId: string
+    runtime: string
+    backends: string[]
+    workerGoal: number
+    allowMixed: boolean
+    modelDigest?: string
+    requireCheckpoint?: boolean
+    maxProbeLatencyMillis?: number
+    minMemoryFreeBytes?: number
+    minGpuVramTotalBytes?: number
+    minGpuVramFreeBytes?: number
+}
+
+export interface FabricInferenceRequest {
+    jobId: string
+    modelDigest: string
+    serverPath: string
+    modelPath: string
+    httpPort: number
+    group: FabricGroupRequest
+}
+
 export interface FabricCapacity {
     workers: number
     memoryFree: number

@@ -22,9 +22,6 @@
 - ⚠️ nvpair-compute-fabric → fabric:build-training-command
 - ⚠️ nvpair-compute-fabric → fabric:checkpoint
 - ⚠️ nvpair-compute-fabric → fabric:heartbeat
-- ⚠️ nvpair-compute-fabric → fabric:job-start
-- ⚠️ nvpair-compute-fabric → fabric:job-status
-- ⚠️ nvpair-compute-fabric → fabric:job-stop
 - ⚠️ nvpair-compute-fabric → fabric:job-submit
 - ⚠️ nvpair-compute-fabric → fabric:plan-group
 - ⚠️ nvpair-compute-fabric → fabric:reconcile
@@ -116,9 +113,9 @@
 | `fabric:checkpoint` | request (we call) | ⚠️ not called |
 | `fabric:get-status` | request (we call) | ✅ yes |
 | `fabric:heartbeat` | request (we call) | ⚠️ not called |
-| `fabric:job-start` | request (we call) | ⚠️ not called |
-| `fabric:job-status` | request (we call) | ⚠️ not called |
-| `fabric:job-stop` | request (we call) | ⚠️ not called |
+| `fabric:job-start` | request (we call) | ✅ yes |
+| `fabric:job-status` | request (we call) | ✅ yes |
+| `fabric:job-stop` | request (we call) | ✅ yes |
 | `fabric:job-submit` | request (we call) | ⚠️ not called |
 | `fabric:plan-group` | request (we call) | ⚠️ not called |
 | `fabric:reconcile` | request (we call) | ⚠️ not called |

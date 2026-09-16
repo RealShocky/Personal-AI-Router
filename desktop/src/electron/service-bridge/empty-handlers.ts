@@ -4,7 +4,7 @@
 import type { WsInvokeChannel, WsInvokeRequest, WsInvokeResponse } from '@/shared/types/ws-channels'
 import type { ClusterInitialSnapshot } from '@/shared/types/bootstrap'
 import type { ClusterNode, ClusterNodeIdentity, Invite } from '@/shared/types/cluster'
-import type { FabricStatus, FabricWorker, FabricJob, FabricExecution, FabricCapacity, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingRequest, FabricTrainingNode } from '@/shared/types/fabric'
+import type { FabricStatus, FabricWorker, FabricJob, FabricExecution, FabricCapacity, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingRequest, FabricTrainingNode, FabricInferenceRequest } from '@/shared/types/fabric'
 import type { EngineType } from '@/shared/types/engines'
 import type { ServiceError } from '@/shared/types/errors'
 import {
@@ -93,6 +93,11 @@ function fabricWorkerState(value: JsonValue | undefined): FabricWorker['state'] 
     return 'ready'
 }
 
+function parseFabricExecution(value: JsonValue | undefined): FabricExecution {
+    const obj = objectValue(value)
+    return { jobId: stringValue(obj?.jobId), pid: numberValue(obj?.pid), state: stringValue(obj?.state), rpcPeers: numberValue(obj?.rpcPeers), httpPort: numberValue(obj?.httpPort) }
+}
+
 export function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
     const root = objectValue(value)
     const capacityObject = objectValue(root?.capacity)
@@ -128,7 +133,7 @@ export function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
         ? root.jobs.map(item => { const obj = objectValue(item); return { jobId: stringValue(obj?.jobId), groupId: stringValue(obj?.groupId), modelDigest: stringValue(obj?.modelDigest), epoch: numberValue(obj?.epoch), state: stringValue(obj?.state) } })
         : []
     const executions: FabricExecution[] = Array.isArray(root?.executions)
-        ? root.executions.map(item => { const obj = objectValue(item); return { jobId: stringValue(obj?.jobId), pid: numberValue(obj?.pid), state: stringValue(obj?.state), rpcPeers: numberValue(obj?.rpcPeers), httpPort: numberValue(obj?.httpPort) } })
+        ? root.executions.map(item => parseFabricExecution(item))
         : []
     return { workers, capacity, jobs, executions }
 }
@@ -178,6 +183,34 @@ function fabricTrainingRequestJson(request: FabricTrainingRequest | undefined): 
         processesPerNode: request.processesPerNode,
         checkpointIntervalSteps: request.checkpointIntervalSteps,
         nodes: request.nodes.map(node => fabricTrainingNodeJson(node))
+    }
+}
+
+function fabricInferenceRequestJson(request: FabricInferenceRequest | undefined): JsonObject | undefined {
+    if (!request) return undefined
+    return {
+        jobId: request.jobId,
+        modelDigest: request.modelDigest,
+        serverPath: request.serverPath,
+        modelPath: request.modelPath,
+        httpPort: request.httpPort,
+        group: fabricGroupRequestJson(request.group)
+    }
+}
+
+function fabricGroupRequestJson(group: FabricInferenceRequest['group']): JsonObject {
+    return {
+        groupId: group.groupId,
+        runtime: group.runtime,
+        backends: group.backends,
+        workerGoal: group.workerGoal,
+        allowMixed: group.allowMixed,
+        ...(group.modelDigest === undefined ? {} : { modelDigest: group.modelDigest }),
+        ...(group.requireCheckpoint === undefined ? {} : { requireCheckpoint: group.requireCheckpoint }),
+        ...(group.maxProbeLatencyMillis === undefined ? {} : { maxProbeLatencyMillis: group.maxProbeLatencyMillis }),
+        ...(group.minMemoryFreeBytes === undefined ? {} : { minMemoryFreeBytes: group.minMemoryFreeBytes }),
+        ...(group.minGpuVramTotalBytes === undefined ? {} : { minGpuVramTotalBytes: group.minGpuVramTotalBytes }),
+        ...(group.minGpuVramFreeBytes === undefined ? {} : { minGpuVramFreeBytes: group.minGpuVramFreeBytes })
     }
 }
 
@@ -1060,6 +1093,12 @@ const EMPTY_SERVICE_BRIDGE_HANDLERS: BridgeHandlerMap = {
     'discovery:get-nodes': () => getModularBridgeState().getAvailableNodes(),
 
     'fabric:get-status': async () => parseFabricStatus(await callCluster('fabric:get-status')),
+    'fabric:inference-start': async payload => parseFabricExecution(await callCluster('fabric:job-start', fabricInferenceRequestJson(payload))),
+    'fabric:inference-status': async payload => parseFabricExecution(await callCluster('fabric:job-status', payload)),
+    'fabric:inference-stop': async payload => {
+        const result = objectValue(await callCluster('fabric:job-stop', payload))
+        return { stopped: booleanValue(result?.stopped) }
+    },
     'fabric:training-start': async payload => parseFabricTrainingExecutions(await callCluster('fabric:training-start', fabricTrainingRequestJson(payload))),
     'fabric:training-status': async payload => parseFabricTrainingStatus(await callCluster('fabric:training-status', payload)),
     'fabric:training-checkpoint': async payload => parseFabricCheckpoint(await callCluster('fabric:training-checkpoint', fabricCheckpointJson(payload))),
