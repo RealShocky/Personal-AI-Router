@@ -61,6 +61,7 @@ export interface FabricInferenceRequest {
     jobId: string
     modelDigest: string
     serverPath: string
+    serverPrefixArgs?: string[]
     modelPath: string
     httpPort: number
     slotSavePath?: string

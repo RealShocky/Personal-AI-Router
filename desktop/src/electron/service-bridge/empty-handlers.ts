@@ -210,6 +210,7 @@ function fabricInferenceRequestJson(request: FabricInferenceRequest | undefined)
         jobId: request.jobId,
         modelDigest: request.modelDigest,
         serverPath: request.serverPath,
+        ...(request.serverPrefixArgs === undefined ? {} : { serverPrefixArgs: request.serverPrefixArgs }),
         modelPath: request.modelPath,
         httpPort: request.httpPort,
         ...(request.slotSavePath === undefined ? {} : { slotSavePath: request.slotSavePath }),

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useState } from 'react'
-import { Button, Flex, FormField, Stack, Text, TextInput } from '@nvidia/foundations-react-core'
+import { Button, Checkbox, Flex, FormField, Stack, Text, TextInput } from '@nvidia/foundations-react-core'
 import type { FabricExecution, FabricGroupPlan, FabricInferenceRequest, FabricStatus } from '@/shared/types/fabric'
 
 const EMPTY_STATUS: FabricStatus = { workers: [], capacity: { workers: 0, memoryFree: 0, gpuVramTotal: 0, gpuVramFree: 0, gpuCount: 0 }, jobs: [], executions: [] }
@@ -14,6 +14,9 @@ export default function FabricInferenceCard() {
     const [jobId, setJobId] = useState('pair-inference-1')
     const [modelDigest, setModelDigest] = useState('')
     const [serverPath, setServerPath] = useState('llama-server')
+    const [runThroughWSL, setRunThroughWSL] = useState(false)
+    const [wslDistro, setWslDistro] = useState('Ubuntu')
+    const [wslServerPath, setWslServerPath] = useState('/opt/llama-b8487/build-cuda128/bin/llama-server')
     const [modelPath, setModelPath] = useState('')
     const [httpPort, setHttpPort] = useState('19090')
     const [workerGoal, setWorkerGoal] = useState('2')
@@ -64,7 +67,8 @@ export default function FabricInferenceCard() {
             const request: FabricInferenceRequest = {
                 jobId: jobId.trim(),
                 modelDigest: modelDigest.trim(),
-                serverPath: serverPath.trim(),
+                serverPath: runThroughWSL ? 'wsl.exe' : serverPath.trim(),
+                ...(runThroughWSL ? { serverPrefixArgs: ['-d', wslDistro.trim(), '--', wslServerPath.trim()] } : {}),
                 modelPath: modelPath.trim(),
                 httpPort: Number(httpPort),
                 ...(slotSavePath.trim() === '' ? {} : { slotSavePath: slotSavePath.trim() }),
@@ -106,6 +110,14 @@ export default function FabricInferenceCard() {
                     <FormField slotLabel="Job ID"><TextInput value={jobId} onValueChange={setJobId} disabled={busy} size="small" /></FormField>
                     <FormField slotLabel="Model digest"><TextInput value={modelDigest} onValueChange={setModelDigest} disabled={busy} size="small" /></FormField>
                     <FormField slotLabel="llama-server"><TextInput value={serverPath} onValueChange={setServerPath} disabled={busy} size="small" /></FormField>
+                    <Flex align="center" gap="1">
+                        <Checkbox checked={runThroughWSL} onCheckedChange={checked => setRunThroughWSL(checked === true)} disabled={busy} aria-label="Run through WSL" />
+                        <Text kind="body/regular/sm">Run through WSL</Text>
+                    </Flex>
+                    {runThroughWSL && <FormField slotLabel="WSL distro"><TextInput value={wslDistro} onValueChange={setWslDistro} disabled={busy} size="small" />
+                    </FormField>}
+                    {runThroughWSL && <FormField slotLabel="WSL llama-server"><TextInput value={wslServerPath} onValueChange={setWslServerPath} disabled={busy} size="small" />
+                    </FormField>}
                     <FormField slotLabel="Model path"><TextInput value={modelPath} onValueChange={setModelPath} disabled={busy} size="small" /></FormField>
                     <FormField slotLabel="HTTP port"><TextInput value={httpPort} onValueChange={setHttpPort} disabled={busy} size="small" /></FormField>
                     <FormField slotLabel="Workers"><TextInput value={workerGoal} onValueChange={setWorkerGoal} disabled={busy} size="small" /></FormField>

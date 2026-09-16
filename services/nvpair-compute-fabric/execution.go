@@ -23,6 +23,7 @@ type StartRequest struct {
 	JobID                     string                  `json:"jobId"`
 	ModelDigest               string                  `json:"modelDigest"`
 	ServerPath                string                  `json:"serverPath"`
+	ServerPrefixArgs          []string                `json:"serverPrefixArgs,omitempty"`
 	ModelPath                 string                  `json:"modelPath"`
 	HTTPPort                  int                     `json:"httpPort"`
 	SlotSavePath              string                  `json:"slotSavePath,omitempty"`
@@ -138,7 +139,8 @@ func (m *ExecutionManager) Start(request StartRequest, plan fabricwire.GroupPlan
 		rpcAddresses = append(rpcAddresses, relay.Addr())
 	}
 
-	args := []string{"--model", request.ModelPath, "--host", "127.0.0.1", "--port", fmt.Sprintf("%d", request.HTTPPort), "--n-gpu-layers", "all"}
+	args := append([]string(nil), request.ServerPrefixArgs...)
+	args = append(args, "--model", request.ModelPath, "--host", "127.0.0.1", "--port", fmt.Sprintf("%d", request.HTTPPort), "--n-gpu-layers", "all")
 	if request.SlotSavePath != "" {
 		args = append(args, "--slot-save-path", request.SlotSavePath)
 	}

@@ -103,6 +103,15 @@ The model path is local to the coordinator because llama.cpp streams the
 selected tensors to RPC workers; workers do not need a second copy for this
 inference path. Training has separate per-node path requirements.
 
+### Windows coordinator with a WSL llama-server
+
+If the CUDA-enabled `llama-server` exists only in WSL, enable **Run through
+WSL** on the inference card. Set the WSL distribution and Linux executable
+path, and enter the model path in WSL form (for example,
+`/mnt/c/Users/you/models/model.gguf`). PAIR supervises `wsl.exe` as the child
+process and still creates the authenticated RPC relays itself; no shell command
+or manual tunnel is required.
+
 ## 3. Pair a device
 
 In the desktop UI, open **Settings > Cluster** on the Windows coordinator and

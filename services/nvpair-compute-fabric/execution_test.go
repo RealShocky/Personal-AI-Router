@@ -42,6 +42,32 @@ func TestExecutionManagerBuildsDistributedLlamaCommand(t *testing.T) {
 	}
 }
 
+func TestExecutionManagerPrependsStructuredServerArguments(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager := NewExecutionManager(ctx, "")
+	var got []string
+	manager.command = func(ctx context.Context, path string, args ...string) *exec.Cmd {
+		got = append([]string{path}, args...)
+		return exec.CommandContext(ctx, "go", "version")
+	}
+	plan := fabricwire.GroupPlan{GroupID: "g1", Runtime: "llama.cpp", Workers: []string{"w1"}}
+	_, err := manager.Start(StartRequest{
+		JobID:           "j-prefix",
+		ServerPath:      "wsl.exe",
+		ServerPrefixArgs: []string{"-d", "Ubuntu", "--", "/opt/llama-b8487/build-cuda128/bin/llama-server"},
+		ModelPath:       "model.gguf",
+		HTTPPort:        11450,
+	}, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"wsl.exe", "-d", "Ubuntu", "--", "/opt/llama-b8487/build-cuda128/bin/llama-server", "--model", "model.gguf", "--host", "127.0.0.1", "--port", "11450", "--n-gpu-layers", "all"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("command = %#v, want %#v", got, want)
+	}
+}
+
 func TestExecutionManagerCreatesOneRelayPerAdvertisedWorker(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
