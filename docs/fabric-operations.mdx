@@ -172,6 +172,25 @@ The task is required for unattended WSL workers that must remain eligible
 during host idle periods. A worker that loses its heartbeat is quarantined;
 when systemd restarts it, a fresh heartbeat epoch automatically re-admits it.
 
+For long-running distributed training, also set the global WSL idle policies
+in `%UserProfile%\\.wslconfig`; these settings apply to every WSL2 distro, so
+review the impact on other workloads before applying them:
+
+```ini
+[wsl2]
+vmIdleTimeout=86400000
+
+[general]
+instanceIdleTimeout=-1
+```
+
+Run `wsl --shutdown` once after changing the file so WSL reloads it. The
+`instanceIdleTimeout=-1` setting disables automatic distro shutdown; the
+24-hour VM timeout is a conservative guard for long jobs. The keepalive task
+and the timeout settings are complementary: the task starts the distro at
+logon, while the timeout policy prevents an active fabric from disappearing
+between training phases.
+
 ## 6. Distributed training runtime
 
 Training is a separate collective runtime from llama.cpp inference. The

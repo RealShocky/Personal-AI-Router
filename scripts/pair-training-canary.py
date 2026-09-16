@@ -32,6 +32,7 @@ def main() -> None:
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
     use_cuda = torch.cuda.is_available()
     device = torch.device(f"cuda:{local_rank}" if use_cuda else "cpu")
+    print(json.dumps({"rank": rank, "worldSize": world_size, "device": str(device), "phase": "init"}), flush=True)
     if world_size > 1:
         dist.init_process_group(backend="nccl" if use_cuda else "gloo")
 

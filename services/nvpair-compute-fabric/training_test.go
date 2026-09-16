@@ -131,7 +131,7 @@ func TestTrainingManagerSupervisesLocalTorchRunProcess(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		status, ok := manager.Status(request.JobID)
-		if ok && status.State == "failed" {
+		if ok && status.State == "complete" {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)

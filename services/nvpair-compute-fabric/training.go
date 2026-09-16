@@ -468,14 +468,17 @@ func (m *TrainingManager) Start(request TrainingRequest, nodeRank uint32) (Train
 }
 
 func (m *TrainingManager) wait(jobID string, process *trainingProcess) {
-	_ = process.cmd.Wait()
+	err := process.cmd.Wait()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	current, ok := m.executions[jobID]
 	if !ok || current != process {
 		return
 	}
-	process.execution.State = "failed"
+	process.execution.State = "complete"
+	if err != nil {
+		process.execution.State = "failed"
+	}
 	if process.stopRequested || m.ctx.Err() != nil {
 		process.execution.State = "stopped"
 	}

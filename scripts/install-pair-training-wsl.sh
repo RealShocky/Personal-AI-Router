@@ -21,7 +21,7 @@ fi
   cuda-bindings==13.4.1 \
   nvidia-cudnn-cu13==9.20.0.48 \
   nvidia-cusparselt-cu13==0.8.1 \
-  nvidia-nccl-cu13==2.29.7 \
+  nvidia-nccl-cu13==2.30.7 \
   nvidia-nvshmem-cu13==3.4.5 \
   triton==3.7.1 \
   numpy \
