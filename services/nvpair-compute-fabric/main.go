@@ -424,6 +424,20 @@ func readyTrainingReplacementNodes(mgr *Manager, request TrainingRequest) []Trai
 		used[node.WorkerID] = true
 	}
 	replacements := make([]TrainingNode, 0, len(request.Nodes))
+	// A worker whose rank process failed may still be healthy and ready. Reuse
+	// it first; a machine-level failure is naturally excluded by the heartbeat
+	// state and will be replaced by a different ready worker below.
+	for _, node := range request.Nodes {
+		for _, record := range mgr.Workers() {
+			if record.Heartbeat.WorkerID == node.WorkerID && record.State == fabricwire.WorkerReady && record.Heartbeat.Endpoint != "" && hasBackend(record.Heartbeat.Backends, wanted) {
+				replacements = append(replacements, TrainingNode{WorkerID: record.Heartbeat.WorkerID, Address: record.Heartbeat.Endpoint, Backend: backend, GPUCount: record.Heartbeat.GPUCount})
+				break
+			}
+		}
+	}
+	if len(replacements) == len(request.Nodes) {
+		return replacements
+	}
 	for _, record := range mgr.Workers() {
 		if record.State != fabricwire.WorkerReady || used[record.Heartbeat.WorkerID] || record.Heartbeat.Endpoint == "" || !hasBackend(record.Heartbeat.Backends, wanted) {
 			continue

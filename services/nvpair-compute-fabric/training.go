@@ -48,15 +48,17 @@ type TrainingRequest struct {
 }
 
 type TrainingExecution struct {
-	JobID    string `json:"jobId"`
-	NodeRank uint32 `json:"nodeRank"`
-	PID      int    `json:"pid"`
-	State    string `json:"state"`
+	JobID      string                 `json:"jobId"`
+	NodeRank   uint32                 `json:"nodeRank"`
+	PID        int                    `json:"pid"`
+	State      string                 `json:"state"`
+	Checkpoint *fabricwire.Checkpoint `json:"checkpoint,omitempty"`
 }
 
 type trainingProcess struct {
 	execution     TrainingExecution
 	cmd           *exec.Cmd
+	request       TrainingRequest
 	stopRequested bool
 }
 
@@ -154,6 +156,7 @@ func (c *TrainingCoordinator) RefreshStatus(ctx context.Context, jobID string) e
 	}
 	refreshed := append([]TrainingExecution(nil), group.executions...)
 	failed := false
+	var reportedCheckpoint *fabricwire.Checkpoint
 	for range group.request.Nodes {
 		current := <-results
 		if current.err != nil {
@@ -166,6 +169,13 @@ func (c *TrainingCoordinator) RefreshStatus(ctx context.Context, jobID string) e
 		if current.execution.State == "failed" {
 			failed = true
 		}
+		if current.execution.Checkpoint != nil && current.execution.Checkpoint.Filename != "" && current.execution.Checkpoint.Stage >= group.checkpoint.Stage {
+			checkpoint := *current.execution.Checkpoint
+			checkpoint.JobID = jobID
+			checkpoint.GroupID = jobID
+			checkpoint.Epoch = group.epoch
+			reportedCheckpoint = &checkpoint
+		}
 	}
 	c.mu.Lock()
 	group, ok = c.groups[jobID]
@@ -174,6 +184,9 @@ func (c *TrainingCoordinator) RefreshStatus(ctx context.Context, jobID string) e
 		return fmt.Errorf("training group not found")
 	}
 	group.executions = refreshed
+	if reportedCheckpoint != nil && reportedCheckpoint.Stage >= group.checkpoint.Stage {
+		group.checkpoint = *reportedCheckpoint
+	}
 	autoRecover := false
 	requestForRecovery := group.request
 	if failed && group.state == "running" {
@@ -458,8 +471,8 @@ func (m *TrainingManager) Start(request TrainingRequest, nodeRank uint32) (Train
 	if err := cmd.Start(); err != nil {
 		return TrainingExecution{}, fmt.Errorf("start torchrun: %w", err)
 	}
-	execution := TrainingExecution{JobID: request.JobID, NodeRank: nodeRank, PID: cmd.Process.Pid, State: "running"}
-	process := &trainingProcess{execution: execution, cmd: cmd}
+	execution := TrainingExecution{JobID: request.JobID, NodeRank: nodeRank, PID: cmd.Process.Pid, State: "running", Checkpoint: trainingCheckpoint(request)}
+	process := &trainingProcess{execution: execution, cmd: cmd, request: request}
 	m.mu.Lock()
 	m.executions[request.JobID] = process
 	m.mu.Unlock()
@@ -506,7 +519,28 @@ func (m *TrainingManager) Status(jobID string) (TrainingExecution, bool) {
 	if !ok {
 		return TrainingExecution{}, false
 	}
+	process.execution.Checkpoint = trainingCheckpoint(process.request)
 	return process.execution, true
+}
+
+func trainingCheckpoint(request TrainingRequest) *fabricwire.Checkpoint {
+	manifestPath := filepath.Join(request.CheckpointDirectory, "pair-canary-manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil
+	}
+	var manifest struct {
+		Step       uint32 `json:"step"`
+		Checkpoint string `json:"checkpoint"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil || manifest.Step == 0 || !validSlotFilename(manifest.Checkpoint) {
+		return nil
+	}
+	checkpointPath := filepath.Join(request.CheckpointDirectory, manifest.Checkpoint)
+	if _, err := os.Stat(checkpointPath); err != nil {
+		return nil
+	}
+	return &fabricwire.Checkpoint{JobID: request.JobID, GroupID: request.JobID, Stage: manifest.Step, Filename: manifest.Checkpoint}
 }
 
 func (r TrainingRequest) Validate() error {

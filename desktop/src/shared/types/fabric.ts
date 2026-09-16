@@ -131,6 +131,7 @@ export interface FabricTrainingExecution {
     nodeRank: number
     pid: number
     state: string
+    checkpoint?: FabricCheckpoint
 }
 
 export interface FabricCheckpoint {

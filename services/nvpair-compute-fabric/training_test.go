@@ -5,8 +5,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -137,6 +140,42 @@ func TestTrainingManagerSupervisesLocalTorchRunProcess(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("training process did not reach terminal state: %+v", started)
+}
+
+func TestTrainingManagerReportsCheckpointManifest(t *testing.T) {
+	checkpointDir := t.TempDir()
+	checkpointFile := "pair-canary-step-4.pt"
+	if err := os.WriteFile(filepath.Join(checkpointDir, checkpointFile), []byte("checkpoint"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest := map[string]any{"step": 4, "checkpoint": checkpointFile}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(checkpointDir, "pair-canary-manifest.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewTrainingManager(context.Background())
+	manager.command = func(ctx context.Context, path string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "go", "version")
+	}
+	request := TrainingRequest{JobID: "train-manifest", ModelDigest: "sha256:model", TrainerPath: "train.py", ModelPath: "model", DatasetPath: "data", CheckpointDirectory: checkpointDir, RendezvousEndpoint: "127.0.0.1:29400", Parallelism: TrainingDataParallel, ProcessesPerNode: 1, CheckpointIntervalSteps: 1, Nodes: []TrainingNode{{WorkerID: "cpu", Address: "127.0.0.1", Backend: "cpu"}}}
+	if _, err := manager.Start(request, 0); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		status, ok := manager.Status(request.JobID)
+		if ok && status.State == "complete" {
+			if status.Checkpoint == nil || status.Checkpoint.Filename != checkpointFile || status.Checkpoint.Stage != 4 {
+				t.Fatalf("checkpoint = %+v", status.Checkpoint)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("training process did not complete")
 }
 
 func TestTrainingCoordinatorRollsBackPartialGroupLaunch(t *testing.T) {
@@ -356,7 +395,7 @@ func TestTrainingCoordinatorAutomaticallyRecoversAfterRankFailure(t *testing.T) 
 		func(_ context.Context, _ string, _ TrainingNode) error { return nil },
 	)
 	coordinator.SetStatusFunc(func(_ context.Context, _ string, _ TrainingNode) (TrainingExecution, error) {
-		return TrainingExecution{}, fmt.Errorf("rank unavailable")
+		return TrainingExecution{State: "failed", Checkpoint: &fabricwire.Checkpoint{Stage: 8, Filename: "step-0008.pt"}}, nil
 	})
 	coordinator.SetRecoveryNodeProvider(func(_ TrainingRequest) []TrainingNode {
 		return []TrainingNode{{WorkerID: "node-b", Address: "127.0.0.2", Backend: "cpu"}}
@@ -364,14 +403,10 @@ func TestTrainingCoordinatorAutomaticallyRecoversAfterRankFailure(t *testing.T) 
 	if _, err := coordinator.StartGroup(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
-	status, _ := coordinator.StatusGroup(request.JobID)
-	if err := coordinator.SaveCheckpoint(request.JobID, fabricwire.Checkpoint{JobID: request.JobID, GroupID: request.JobID, Epoch: status.Epoch, Stage: 8, Filename: "step-0008.pt"}); err != nil {
-		t.Fatal(err)
-	}
 	if err := coordinator.RefreshStatus(context.Background(), request.JobID); err != nil {
 		t.Fatal(err)
 	}
-	status, _ = coordinator.StatusGroup(request.JobID)
+	status, _ := coordinator.StatusGroup(request.JobID)
 	if status.State != "running" || status.RecoveryAttempts != 1 || len(startedRequests) != 2 || startedRequests[1].ResumeCheckpoint != "step-0008.pt" {
 		t.Fatalf("auto-recovered status = %+v requests = %+v", status, startedRequests)
 	}

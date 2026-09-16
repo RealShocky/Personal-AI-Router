@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import time
 from pathlib import Path
 
 import torch
@@ -66,6 +67,9 @@ def main() -> None:
     if world_size > 1:
         dist.barrier()
         dist.destroy_process_group()
+    hold_seconds = int(os.environ.get("PAIR_TRAINING_HOLD_SECONDS", "0"))
+    if hold_seconds > 0:
+        time.sleep(hold_seconds)
     print(json.dumps({"rank": rank, "worldSize": world_size, "device": str(device), "status": "complete"}), flush=True)
 
 

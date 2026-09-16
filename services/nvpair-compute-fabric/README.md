@@ -57,6 +57,13 @@ argument vector and invokes `torchrun` directly. Set the PAIR-owned
 as a containerized ARM64 launcher on DGX; the wrapper receives the same
 structured argument vector and must not evaluate it through a shell.
 
+Training status includes an optional `checkpoint` execution record. A trainer
+publishes a JSON manifest named `pair-canary-manifest.json` in the configured
+checkpoint directory with a numeric `step` and relative `checkpoint` filename.
+The worker only reports the checkpoint when the filename is safe and the file
+exists. The coordinator uses this record to resume a replacement training
+world after a rank failure.
+
 The coordinator JSON-RPC method `fabric:training-start` fans a validated
 request out to every listed rank concurrently. If one rank fails to start, it
 stops the ranks that did start and returns an error; it never leaves a partial

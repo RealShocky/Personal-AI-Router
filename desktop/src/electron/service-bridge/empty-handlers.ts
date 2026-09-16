@@ -178,7 +178,7 @@ export function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
 
 function parseFabricTrainingExecution(value: JsonValue | undefined): FabricTrainingExecution {
     const obj = objectValue(value)
-    return { jobId: stringValue(obj?.jobId), nodeRank: numberValue(obj?.nodeRank), pid: numberValue(obj?.pid), state: stringValue(obj?.state) }
+    return { jobId: stringValue(obj?.jobId), nodeRank: numberValue(obj?.nodeRank), pid: numberValue(obj?.pid), state: stringValue(obj?.state), ...(obj?.checkpoint === undefined ? {} : { checkpoint: parseFabricCheckpoint(obj.checkpoint) }) }
 }
 
 function parseFabricTrainingExecutions(value: JsonValue | undefined): FabricTrainingExecution[] {

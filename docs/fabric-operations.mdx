@@ -228,6 +228,25 @@ Windows mirrored networking or a routed network interface for heterogeneous
 WSL-to-Linux training. PAIR does not silently start a collective that cannot
 route its peer addresses.
 
+### Checkpoint handoff and automatic recovery
+
+The PAIR training adapter uses a small, explicit checkpoint contract. Each
+rank writes its checkpoint into `checkpointDirectory` and publishes
+`pair-canary-manifest.json` (or the equivalent manifest emitted by a production
+trainer) containing the completed `step` and relative `checkpoint` filename.
+The worker validates that the filename is a safe slot name and that the file
+exists, then exposes it in `fabric:training-status`. The coordinator keeps the
+newest checkpoint for the group and persists it with the training state.
+
+If a rank process fails while the workers remain heartbeat-ready, the
+coordinator can reuse those workers and launch a fresh collective epoch with
+`--resume <checkpoint filename>`. If a machine is unavailable, it selects
+same-backend replacement workers when enough capacity exists. Recovery is
+bounded to three attempts; without a verified checkpoint or a complete
+replacement world, the group stays `recoverable` for operator review. This is
+process-level distributed training recovery, not transparent OS-level VRAM
+pooling or live tensor migration.
+
 ### Windows coordinator with a WSL llama-server
 
 If the CUDA-enabled `llama-server` exists only in WSL, enable **Run through
