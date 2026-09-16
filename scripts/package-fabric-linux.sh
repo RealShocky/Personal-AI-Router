@@ -37,6 +37,7 @@ PAIR_NODE_ID=LINUX-01
 PAIR_CLUSTER_DIR=/var/lib/nvpair/cluster
 PAIR_RUNTIME=cpu
 PAIR_BACKEND=cpu
+PAIR_TRAINING_HOST_ROOT=
 EOF
 chmod +x "$STAGE/nvpair-compute-fabric" "$STAGE/install-fabric-worker.sh" "$STAGE/configure-nccl-ports.sh"
 if [[ -f "$STAGE/nvpair-cluster-manager" ]]; then

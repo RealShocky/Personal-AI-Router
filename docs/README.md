@@ -24,6 +24,8 @@ optional distributed compute fabric.
 - [Overview](overview.mdx) — product vocabulary and system boundaries.
 - [Distributed fabric](distributed-fabric.mdx) — coordinator, worker, runtime
   adapters, logical pooling, and current verified paths.
+- [Logical device architecture](logical-device.mdx) — deep boundary analysis
+  and the PAIR tensor-device design for explicit heterogeneous memory sharing.
 - [Architecture](architecture.mdx) — process model, trust boundaries, and ports.
 - [Building and running](building.mdx) — prerequisites and source builds.
 - [Developer guide](developing.mdx) — repository tour and contribution workflow.

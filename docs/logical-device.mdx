@@ -1,0 +1,84 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
+# PAIR logical device architecture
+
+PAIR can present a heterogeneous fleet as one logical inference or training
+service, but there are three different meanings of “one device.” They must not
+be conflated.
+
+## What the operating system can see
+
+Windows, CUDA, and Metal enumerate device objects owned by a local driver and
+address space. A network worker cannot be added to an existing NVIDIA CUDA
+device by changing an environment variable. A true OS-visible adapter would
+require a signed WDDM kernel-mode miniport and matching user-mode driver, plus
+a protocol that implements allocation, command submission, synchronization,
+residency, reset, and fault handling. WDDM’s GPU paravirtualization model is
+designed around a tailored guest driver and a host GPU-PV implementation; it is
+not a generic bridge for arbitrary remote GPUs.
+
+NVIDIA vGPU can expose multiple virtual GPUs to a VM, and multi-vGPU can use
+multiple vGPU resources in supported environments, but it remains a
+hypervisor/vendor feature with hardware, product, licensing, and topology
+constraints. It does not combine this Windows PC, a Mac Metal device, an AWS
+CPU, and a DGX GB10 into one CUDA device.
+
+Metal likewise creates a `MTLDevice` for each local GPU. Metal resources are
+owned by their device and cannot be passed to a different device as if it were
+the same address space.
+
+## What is technically available below the OS-device boundary
+
+CUDA VMM and fabric memory can map allocations across supported NVIDIA
+multi-node NVLink fabrics. NVSHMEM exposes a partitioned global address space
+for supported NVIDIA GPU clusters. Those mechanisms still require participating
+CUDA processes and supported interconnects; they do not make Ethernet-attached
+or Metal devices appear in `cudaGetDeviceCount()`.
+
+This is the strongest “shared memory” direction for a homogeneous NVLink
+cluster. It is not a solution for the current RTX 5060 + DGX + Mac + mini-PC
+fleet, because those nodes do not share one CUDA fabric and do not share one
+driver address space.
+
+## PAIR’s novel practical route: a logical tensor device
+
+PAIR should expose a device-neutral logical tensor runtime above the local
+drivers:
+
+1. The coordinator creates a versioned logical device plan with tensor shards,
+   memory tiers, placement, transport, and failure policy.
+2. Each worker owns local CUDA, Metal, or CPU allocations. No remote pointer is
+   fabricated and no invalid CUDA pointer is handed to an application.
+3. The runtime moves explicit tensor pages or collective buffers between
+   workers. Hot weights remain local; cold weights and KV-cache pages may live
+   in host RAM or on another worker.
+4. Pipeline and tensor-parallel stages overlap compute and transfer. A page
+   fault becomes an asynchronous fabric fetch with admission control and
+   bounded retry, not a blocking illusion of zero-latency shared memory.
+5. Every stage boundary has a checkpoint and epoch. A failed worker is removed,
+   a replacement plan is created, and only verified state is resumed.
+
+This gives applications a single PAIR endpoint and a model larger than one
+local GPU, while preserving the performance and correctness boundary that the
+OS and local GPU APIs require. It can support heterogeneous CPU/CUDA/Metal
+workers through explicit adapters; it cannot honestly promise one pooled VRAM
+device to arbitrary existing CUDA or Metal applications.
+
+## Current implementation boundary
+
+The fabric already implements worker capability discovery, authenticated
+RPC-relay execution, replicated/tensor/pipeline plan metadata, distributed
+training checkpoints, and bounded recovery. The next runtime phase is to add a
+logical tensor execution API with explicit page ownership and transfer metrics.
+Until that API is implemented and benchmarked, aggregate capacity in the
+dashboard means schedulable fleet capacity, not a contiguous memory pool.
+
+Sources: [CUDA multi-GPU programming](https://docs.nvidia.com/cuda/cuda-programming-guide/03-advanced/multi-gpu-systems.html),
+[CUDA virtual memory management](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/virtual-memory-management.html),
+[NVSHMEM](https://docs.nvidia.com/nvshmem/api/latest/introduction.html),
+[Windows GPU paravirtualization](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/gpu-paravirtualization),
+[NVIDIA vGPU features](https://docs.nvidia.com/knowledge-base/latest/vgpu-features.html), and
+[Metal devices](https://developer.apple.com/documentation/metal/mtldevice).
