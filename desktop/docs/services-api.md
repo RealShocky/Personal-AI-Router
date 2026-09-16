@@ -30,11 +30,6 @@
 - ⚠️ nvpair-compute-fabric → fabric:reconcile
 - ⚠️ nvpair-compute-fabric → fabric:recover
 - ⚠️ nvpair-compute-fabric → fabric:rejoin
-- ⚠️ nvpair-compute-fabric → fabric:training-checkpoint
-- ⚠️ nvpair-compute-fabric → fabric:training-recover
-- ⚠️ nvpair-compute-fabric → fabric:training-start
-- ⚠️ nvpair-compute-fabric → fabric:training-status
-- ⚠️ nvpair-compute-fabric → fabric:training-stop
 - ⚠️ nvpair-engine-manager → engine:describe
 - ⚠️ nvpair-engine-manager → engine:errors
 - ⚠️ nvpair-engine-manager → engine:logs
@@ -129,11 +124,11 @@
 | `fabric:reconcile` | request (we call) | ⚠️ not called |
 | `fabric:recover` | request (we call) | ⚠️ not called |
 | `fabric:rejoin` | request (we call) | ⚠️ not called |
-| `fabric:training-checkpoint` | request (we call) | ⚠️ not called |
-| `fabric:training-recover` | request (we call) | ⚠️ not called |
-| `fabric:training-start` | request (we call) | ⚠️ not called |
-| `fabric:training-status` | request (we call) | ⚠️ not called |
-| `fabric:training-stop` | request (we call) | ⚠️ not called |
+| `fabric:training-checkpoint` | request (we call) | ✅ yes |
+| `fabric:training-recover` | request (we call) | ✅ yes |
+| `fabric:training-start` | request (we call) | ✅ yes |
+| `fabric:training-status` | request (we call) | ✅ yes |
+| `fabric:training-stop` | request (we call) | ✅ yes |
 
 ## nvpair-engine-manager
 
