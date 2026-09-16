@@ -20,6 +20,7 @@ cp "$ROOT/scripts/install-fabric-worker.sh" "$STAGE/"
 cp "$ROOT/scripts/pair-training-canary.py" "$STAGE/"
 cp "$ROOT/scripts/install-pair-training-wsl.sh" "$STAGE/"
 cp "$ROOT/scripts/pair-torchrun-dgx.sh" "$STAGE/"
+cp "$ROOT/scripts/configure-nccl-ports.sh" "$STAGE/"
 cp "$ROOT/docs/distributed-fabric.mdx" "$STAGE/"
 cp "$ROOT/docs/fabric-operations.mdx" "$STAGE/"
 cp "$ROOT/docs/README.md" "$STAGE/PAIR-documentation.md"
@@ -37,7 +38,7 @@ PAIR_CLUSTER_DIR=/var/lib/nvpair/cluster
 PAIR_RUNTIME=cpu
 PAIR_BACKEND=cpu
 EOF
-chmod +x "$STAGE/nvpair-compute-fabric" "$STAGE/install-fabric-worker.sh"
+chmod +x "$STAGE/nvpair-compute-fabric" "$STAGE/install-fabric-worker.sh" "$STAGE/configure-nccl-ports.sh"
 if [[ -f "$STAGE/nvpair-cluster-manager" ]]; then
   (cd "$STAGE" && sha256sum nvpair-compute-fabric nvpair-cluster-manager > SHA256SUMS)
 else

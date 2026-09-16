@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 [CmdletBinding()]
 param(
     [string]$RemoteSubnet = '192.168.50.0/24',
-    [string]$PortRange = '14324,15425,29401-29410'
+    [string]$PortRange = '14324,15425,29401-29500'
 )
 
 $ErrorActionPreference = 'Stop'
