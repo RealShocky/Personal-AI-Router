@@ -132,6 +132,40 @@ func TestExecutionManagerRequiresCheckpointStorageForPeriodicCheckpoints(t *test
 	}
 }
 
+func TestExecutionManagerRejectsCheckpointPathSeparators(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager := NewExecutionManager(ctx, "")
+	_, err := manager.Start(StartRequest{
+		JobID:          "job-checkpoint-path",
+		ServerPath:     "llama-server",
+		ModelPath:      "model.gguf",
+		HTTPPort:       11450,
+		CheckpointFile: "nested/checkpoint.slot",
+	}, fabricwire.GroupPlan{GroupID: "g1", Runtime: "llama.cpp", Workers: []string{"w1"}})
+	if err == nil || !strings.Contains(err.Error(), "relative filename") {
+		t.Fatalf("err = %v, want relative filename validation", err)
+	}
+}
+
+func TestValidSlotFilename(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		valid bool
+	}{
+		{name: "checkpoint.slot", valid: true},
+		{name: "step-0001.slot", valid: true},
+		{name: "nested/checkpoint.slot", valid: false},
+		{name: `nested\\checkpoint.slot`, valid: false},
+		{name: "..", valid: false},
+		{name: "", valid: false},
+	} {
+		if got := validSlotFilename(test.name); got != test.valid {
+			t.Errorf("validSlotFilename(%q) = %v, want %v", test.name, got, test.valid)
+		}
+	}
+}
+
 func TestExecutionManagerAutomaticallyRecoversFailedJobIntoFreshGroupEpoch(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

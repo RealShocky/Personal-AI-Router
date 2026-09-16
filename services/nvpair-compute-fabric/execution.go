@@ -5,12 +5,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -109,6 +110,9 @@ func (m *ExecutionManager) Start(request StartRequest, plan fabricwire.GroupPlan
 	}
 	if request.CheckpointIntervalSeconds > 0 && (request.CheckpointFile == "" || request.SlotSavePath == "") {
 		return Execution{}, fmt.Errorf("checkpoint interval requires checkpointFile and slotSavePath")
+	}
+	if request.CheckpointFile != "" && !validSlotFilename(request.CheckpointFile) {
+		return Execution{}, fmt.Errorf("checkpointFile must be a relative filename without path separators")
 	}
 
 	m.mu.Lock()
@@ -305,9 +309,14 @@ func restoreSlotCheckpoint(ctx context.Context, port, slotID int, filename strin
 	deadline := time.NewTimer(30 * time.Second)
 	defer deadline.Stop()
 	for {
-		endpoint := fmt.Sprintf("http://127.0.0.1:%d/slots/%d?action=restore&filename=%s", port, slotID, url.QueryEscape(filename))
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+		endpoint := fmt.Sprintf("http://127.0.0.1:%d/slots/%d?action=restore", port, slotID)
+		body, marshalErr := json.Marshal(map[string]string{"filename": filename})
+		if marshalErr != nil {
+			return
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(body)))
 		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
 			resp, requestErr := client.Do(req)
 			if requestErr == nil {
 				_ = resp.Body.Close()
@@ -337,13 +346,21 @@ func (m *ExecutionManager) SaveCheckpoint(checkpoint fabricwire.Checkpoint) erro
 	if checkpoint.Filename == "" {
 		return fmt.Errorf("checkpoint filename is required")
 	}
-	endpoint := fmt.Sprintf("http://127.0.0.1:%d/slots/%d?action=save&filename=%s", status.HTTPPort, checkpoint.SlotID, url.QueryEscape(checkpoint.Filename))
+	if !validSlotFilename(checkpoint.Filename) {
+		return fmt.Errorf("checkpoint filename must be a relative filename without path separators")
+	}
+	endpoint := fmt.Sprintf("http://127.0.0.1:%d/slots/%d?action=save", status.HTTPPort, checkpoint.SlotID)
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	body, err := json.Marshal(map[string]string{"filename": checkpoint.Filename})
 	if err != nil {
 		return err
 	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
 	if err != nil {
 		return err
@@ -353,4 +370,8 @@ func (m *ExecutionManager) SaveCheckpoint(checkpoint fabricwire.Checkpoint) erro
 		return fmt.Errorf("llama checkpoint save returned HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func validSlotFilename(filename string) bool {
+	return filename != "" && filename != "." && filename != ".." && filepath.Base(filename) == filename && !strings.ContainsAny(filename, `/\\`)
 }

@@ -89,6 +89,11 @@ the job state. Optional slot-save and checkpoint fields enable periodic
 checkpoint capture and verified slot restore after worker loss. Stop the job
 from the same card.
 
+Checkpoint filenames are relative slot names, not arbitrary filesystem paths;
+llama.cpp rejects path separators. PAIR writes the configured checkpoint file
+under the supplied `--slot-save-path` directory and sends the filename in the
+JSON request body to `/slots/<slot>?action=save` or `restore`.
+
 The model path is local to the coordinator because llama.cpp streams the
 selected tensors to RPC workers; workers do not need a second copy for this
 inference path. Training has separate per-node path requirements.
