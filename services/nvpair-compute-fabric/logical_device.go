@@ -85,6 +85,23 @@ func (m *LogicalDeviceManager) Status(planID string) (fabricwire.LogicalDeviceSt
 	return fabricwire.LogicalDeviceStatus{PlanID: plan.PlanID, Epoch: plan.Epoch, State: state, Workers: workers, Pages: append([]fabricwire.PagePlacement(nil), plan.Pages...), TransferIDs: transferIDs, UpdatedAtMS: time.Now().UnixMilli()}, true
 }
 
+func (m *LogicalDeviceManager) Reconcile(_ ...time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for planID, plan := range m.plans {
+		state := m.states[planID]
+		if state == fabricwire.LogicalDeviceCancelled || state == fabricwire.LogicalDeviceCompleted {
+			continue
+		}
+		for _, worker := range plan.Workers {
+			if !m.workers.Assignable(worker.WorkerID) {
+				m.states[planID] = fabricwire.LogicalDeviceDegraded
+				break
+			}
+		}
+	}
+}
+
 func (m *LogicalDeviceManager) Transfer(request fabricwire.TransferRequest) (fabricwire.TransferStatus, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

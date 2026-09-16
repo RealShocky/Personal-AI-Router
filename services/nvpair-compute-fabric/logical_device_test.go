@@ -157,3 +157,28 @@ func TestLogicalDeviceManagerTransfersPageOnlyAfterDigestVerification(t *testing
 		t.Fatalf("Status() after transfer = %#v, %v", status, ok)
 	}
 }
+
+func TestLogicalDeviceManagerMarksPlanDegradedWhenWorkerDisappears(t *testing.T) {
+	now := time.Now()
+	workers := NewManager(time.Second)
+	workers.AcceptHeartbeat(fabricwire.Heartbeat{
+		WorkerID: "cpu-a", NodeID: "host-a", Epoch: 1, State: fabricwire.WorkerReady,
+		Runtime: "pair", Backends: []string{"cpu"}, MemoryFree: 8 << 30,
+	}, now.Add(-3*time.Second))
+	logical := NewLogicalDeviceManager(workers)
+	plan, err := logical.Plan(fabricwire.LogicalDevicePlanRequest{
+		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "degrade-plan"},
+		Runtime:              "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
+		Providers: []fabricwire.Provider{fabricwire.ProviderCPU}, WorkerGoal: 1,
+		Pages: []fabricwire.PageSpec{{PageID: "page-1", Bytes: 1024}},
+	})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	workers.Reconcile(now)
+	logical.Reconcile(now)
+	status, ok := logical.Status(plan.PlanID)
+	if !ok || status.State != fabricwire.LogicalDeviceDegraded {
+		t.Fatalf("Status() after worker loss = %#v, %v", status, ok)
+	}
+}

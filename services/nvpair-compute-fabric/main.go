@@ -155,6 +155,7 @@ func main() {
 			select {
 			case now := <-ticker.C:
 				mgr.Reconcile(now)
+				logicalDevice.Reconcile()
 				executions.RecoverFailed(mgr, jobs)
 			case <-ctx.Done():
 				return
