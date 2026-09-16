@@ -53,6 +53,13 @@ request out to every listed rank concurrently. If one rank fails to start, it
 stops the ranks that did start and returns an error; it never leaves a partial
 training world running.
 
+The coordinator also exposes the inference control endpoints
+`POST /v1/fabric/inference/start`, `GET /v1/fabric/inference/status?jobId=...`,
+and `POST /v1/fabric/inference/stop?jobId=...`. They require the same pinned
+cluster mTLS identity as the worker endpoints and call the same admission,
+checkpoint, relay, and supervision path as `fabric:job-start`. This makes the
+fabric usable by a headless operator without duplicating scheduler logic.
+
 `fabric:training-status` refreshes each assigned rank over pinned mTLS before
 returning the rank list and group state, while
 `fabric:training-stop` stops every rank in the group. Group state is held by the

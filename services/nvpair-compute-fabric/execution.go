@@ -96,9 +96,6 @@ func (m *ExecutionManager) StartWithExecutionPlan(request StartRequest, executio
 	request.Group.GroupID = group.GroupID
 	request.Group.Runtime = group.Runtime
 	request.Group.WorkerGoal = uint32(len(group.Workers))
-	if request.Group.ModelDigest == "" {
-		request.Group.ModelDigest = executionPlan.ModelDigest
-	}
 	return m.Start(request, group)
 }
 
@@ -114,6 +111,9 @@ func (m *ExecutionManager) Start(request StartRequest, plan fabricwire.GroupPlan
 	}
 	if request.CheckpointFile != "" && !validSlotFilename(request.CheckpointFile) {
 		return Execution{}, fmt.Errorf("checkpointFile must be a relative filename without path separators")
+	}
+	if err := ensureSlotSavePath(request.ServerPath, request.ServerPrefixArgs, request.SlotSavePath); err != nil {
+		return Execution{}, fmt.Errorf("prepare slot save path: %w", err)
 	}
 
 	m.mu.Lock()
@@ -167,6 +167,29 @@ func (m *ExecutionManager) Start(request StartRequest, plan fabricwire.GroupPlan
 		go restoreSlotCheckpoint(m.ctx, request.HTTPPort, request.CheckpointSlot, request.CheckpointFile)
 	}
 	return execution, nil
+}
+
+func ensureSlotSavePath(serverPath string, prefixArgs []string, slotPath string) error {
+	if slotPath == "" {
+		return nil
+	}
+	if !strings.EqualFold(serverPath, "wsl.exe") && !strings.HasSuffix(strings.ToLower(serverPath), "\\wsl.exe") {
+		return os.MkdirAll(slotPath, 0o755)
+	}
+
+	args := make([]string, 0, 6)
+	for index := 0; index+1 < len(prefixArgs); index++ {
+		if prefixArgs[index] != "-d" && prefixArgs[index] != "--distribution" {
+			continue
+		}
+		args = append(args, prefixArgs[index], prefixArgs[index+1])
+		break
+	}
+	args = append(args, "--", "mkdir", "-p", slotPath)
+	if err := exec.Command(serverPath, args...).Run(); err != nil {
+		return fmt.Errorf("wsl mkdir failed: %w", err)
+	}
+	return nil
 }
 
 func (m *ExecutionManager) checkpointLoop(running *runningExecution) {

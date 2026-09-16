@@ -108,6 +108,16 @@ as `cuda`). A worker may therefore advertise `runtime: cuda` while still being
 eligible for a llama.cpp group; `runtime` describes the worker execution
 capability and `backends` describes the concrete acceleration options.
 
+Headless operators can use the coordinator's pinned-mTLS endpoints
+`/v1/fabric/inference/start`, `/v1/fabric/inference/status`, and
+`/v1/fabric/inference/stop`; they use the same planner and supervisor as the
+Electron card. The start body is the same `FabricInferenceRequest` shape, and
+`jobId` is a query parameter for status and stop.
+
+When checkpointing through WSL, PAIR creates the configured Linux slot
+directory with `wsl.exe ... mkdir -p` before launching the server. The path is
+passed as a structured argument and is never evaluated through a shell.
+
 ### Windows coordinator with a WSL llama-server
 
 If the CUDA-enabled `llama-server` exists only in WSL, enable **Run through

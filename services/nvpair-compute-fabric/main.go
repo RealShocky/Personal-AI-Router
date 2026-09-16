@@ -92,7 +92,7 @@ func main() {
 		if *clusterDir == "" {
 			log.Printf("fabric HTTP endpoint disabled: no cluster directory")
 		} else {
-			go serveFabricHTTP(ctx, *httpPort, *clusterDir, mgr, *rpcTarget, training)
+			go serveFabricHTTP(ctx, *httpPort, *clusterDir, mgr, *rpcTarget, training, jobs, executions)
 		}
 	}
 	if *rpcServerPath != "" {
@@ -410,14 +410,14 @@ func postFabricRejoin(ctx context.Context, client *http.Client, endpoint, worker
 	return json.NewDecoder(resp.Body).Decode(&result) == nil && result.Rejoined
 }
 
-func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Manager, rpcTarget string, training *TrainingManager) {
+func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Manager, rpcTarget string, training *TrainingManager, jobs *JobStore, executions *ExecutionManager) {
 	mesh := clustertrust.Open(clusterDir)
 	go mesh.Watch(ctx, nil)
 	config := mesh.ServerTLSConfig()
 	server := &http.Server{
 		Addr:      fmt.Sprintf("0.0.0.0:%d", port),
 		TLSConfig: config,
-		Handler:   fabricHTTPHandlerWithTraining(mesh, mgr, rpcTarget, training),
+		Handler:   fabricHTTPHandlerWithExecution(mesh, mgr, rpcTarget, training, jobs, executions),
 	}
 	listener, err := net.Listen("tcp", server.Addr)
 	if err != nil {
@@ -439,10 +439,14 @@ func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Mana
 }
 
 func fabricHTTPHandler(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string) http.Handler {
-	return fabricHTTPHandlerWithTraining(mesh, mgr, rpcTarget, nil)
+	return fabricHTTPHandlerWithExecution(mesh, mgr, rpcTarget, nil, nil, nil)
 }
 
 func fabricHTTPHandlerWithTraining(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string, training *TrainingManager) http.Handler {
+	return fabricHTTPHandlerWithExecution(mesh, mgr, rpcTarget, training, nil, nil)
+}
+
+func fabricHTTPHandlerWithExecution(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string, training *TrainingManager, jobs *JobStore, executions *ExecutionManager) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/fabric/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -455,6 +459,60 @@ func fabricHTTPHandlerWithTraining(mesh *clustertrust.Mesh, mgr *Manager, rpcTar
 		}
 		writeJSON(w, map[string]any{"workers": mgr.Workers(), "capacity": mgr.Capacity()})
 	})
+	if jobs != nil && executions != nil {
+		mux.HandleFunc("/v1/fabric/inference/start", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if _, ok := mesh.VerifyClientPin(r); !ok {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			var request StartRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				http.Error(w, "invalid inference request", http.StatusBadRequest)
+				return
+			}
+			execution, err := startInferenceJob(mgr, jobs, executions, request)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, execution)
+		})
+		mux.HandleFunc("/v1/fabric/inference/status", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if _, ok := mesh.VerifyClientPin(r); !ok {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			execution, ok := executions.Status(r.URL.Query().Get("jobId"))
+			if !ok {
+				http.Error(w, "inference job not found", http.StatusNotFound)
+				return
+			}
+			writeJSON(w, execution)
+		})
+		mux.HandleFunc("/v1/fabric/inference/stop", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if _, ok := mesh.VerifyClientPin(r); !ok {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			if err := executions.Stop(r.URL.Query().Get("jobId")); err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			writeJSON(w, map[string]bool{"stopped": true})
+		})
+	}
 	mux.HandleFunc("/v1/fabric/rpc", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodConnect {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -913,25 +971,7 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			_ = codec.RespondError(msg.ID, -32602, "invalid job start")
 			return
 		}
-		if request.Group.ModelDigest == "" {
-			request.Group.ModelDigest = request.ModelDigest
-		}
-		group, err := mgr.PlanGroup(request.Group)
-		if err != nil {
-			_ = codec.RespondError(msg.ID, -32001, err.Error())
-			return
-		}
-		executionPlan, err := mgr.BuildExecutionPlan(request.Group, group, fabricwire.ShardTensor, fabricwire.TransportMTLSRPC)
-		if err != nil {
-			_ = codec.RespondError(msg.ID, -32001, err.Error())
-			return
-		}
-		job := JobRecord{JobID: request.JobID, GroupID: group.GroupID, ModelDigest: request.ModelDigest, Epoch: group.Epoch}
-		if err := jobs.Submit(job); err != nil {
-			_ = codec.RespondError(msg.ID, -32003, err.Error())
-			return
-		}
-		execution, err := executions.StartWithExecutionPlan(request, executionPlan)
+		execution, err := startInferenceJob(mgr, jobs, executions, request)
 		if err != nil {
 			_ = codec.RespondError(msg.ID, -32004, err.Error())
 			return

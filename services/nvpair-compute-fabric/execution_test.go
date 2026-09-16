@@ -9,10 +9,12 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
-	"sync"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -53,11 +55,11 @@ func TestExecutionManagerPrependsStructuredServerArguments(t *testing.T) {
 	}
 	plan := fabricwire.GroupPlan{GroupID: "g1", Runtime: "llama.cpp", Workers: []string{"w1"}}
 	_, err := manager.Start(StartRequest{
-		JobID:           "j-prefix",
-		ServerPath:      "wsl.exe",
+		JobID:            "j-prefix",
+		ServerPath:       "wsl.exe",
 		ServerPrefixArgs: []string{"-d", "Ubuntu", "--", "/opt/llama-b8487/build-cuda128/bin/llama-server"},
-		ModelPath:       "model.gguf",
-		HTTPPort:        11450,
+		ModelPath:        "model.gguf",
+		HTTPPort:         11450,
 	}, plan)
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +144,7 @@ func TestExecutionManagerCarriesExecutionPlanGroupIntoRecoveryState(t *testing.T
 	manager.mu.Lock()
 	running := manager.executions["job-1"]
 	manager.mu.Unlock()
-	if running == nil || running.group.GroupID != "plan-1" || running.group.Runtime != "llama.cpp" || running.group.WorkerGoal != 1 {
+	if running == nil || running.group.GroupID != "plan-1" || running.group.Runtime != "llama.cpp" || running.group.WorkerGoal != 1 || running.group.ModelDigest != "" {
 		t.Fatalf("recovery group = %+v", running)
 	}
 }
@@ -160,6 +162,16 @@ func TestExecutionManagerRequiresCheckpointStorageForPeriodicCheckpoints(t *test
 	}, fabricwire.GroupPlan{GroupID: "g1", Runtime: "llama.cpp", Workers: []string{"w1"}})
 	if err == nil || !strings.Contains(err.Error(), "checkpoint interval") {
 		t.Fatalf("err = %v, want checkpoint storage validation", err)
+	}
+}
+
+func TestEnsureSlotSavePathCreatesNativeDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "checkpoints")
+	if err := ensureSlotSavePath("llama-server", nil, path); err != nil {
+		t.Fatalf("ensureSlotSavePath() error = %v", err)
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		t.Fatalf("slot path info = %v, err = %v", info, err)
 	}
 }
 

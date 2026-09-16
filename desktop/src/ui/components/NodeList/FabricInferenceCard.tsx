@@ -74,7 +74,7 @@ export default function FabricInferenceCard() {
                 ...(slotSavePath.trim() === '' ? {} : { slotSavePath: slotSavePath.trim() }),
                 ...(checkpointFile.trim() === '' ? {} : { checkpointFile: checkpointFile.trim() }),
                 ...(Number(checkpointInterval) > 0 ? { checkpointIntervalSeconds: Number(checkpointInterval) } : {}),
-                group: { groupId: jobId.trim(), runtime: 'llama.cpp', backends: ['cuda'], workerGoal: goal, allowMixed: false, modelDigest: modelDigest.trim() }
+                group: { groupId: jobId.trim(), runtime: 'llama.cpp', backends: ['cuda'], workerGoal: goal, allowMixed: false }
             }
             setExecution(await window.pairApi.fabric.startInference(request))
         })
@@ -88,7 +88,6 @@ export default function FabricInferenceCard() {
                 backends: ['cuda'],
                 workerGoal: goal,
                 allowMixed: false,
-                modelDigest: modelDigest.trim()
             }
             setPlan(await window.pairApi.fabric.planGroup(request))
         })
