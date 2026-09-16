@@ -17,6 +17,10 @@ type gpuMemorySnapshot struct {
 	Count uint32
 }
 
+func nvidiaSMICommandCandidates() []string {
+	return []string{"nvidia-smi", "/usr/lib/wsl/lib/nvidia-smi"}
+}
+
 func parseNvidiaMemory(output string) (gpuMemorySnapshot, bool) {
 	var snapshot gpuMemorySnapshot
 	for _, line := range strings.Split(output, "\n") {
@@ -45,13 +49,15 @@ func parseNvidiaMemory(output string) (gpuMemorySnapshot, bool) {
 func readGPUMemory() gpuMemorySnapshot {
 	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, "nvidia-smi", "--query-gpu=memory.used,memory.total,memory.free", "--format=csv,noheader,nounits").Output()
-	if err != nil {
-		return gpuMemorySnapshot{}
+	for _, command := range nvidiaSMICommandCandidates() {
+		output, err := exec.CommandContext(ctx, command, "--query-gpu=memory.used,memory.total,memory.free", "--format=csv,noheader,nounits").Output()
+		if err != nil {
+			continue
+		}
+		snapshot, ok := parseNvidiaMemory(string(output))
+		if ok {
+			return snapshot
+		}
 	}
-	snapshot, ok := parseNvidiaMemory(string(output))
-	if !ok {
-		return gpuMemorySnapshot{}
-	}
-	return snapshot
+	return gpuMemorySnapshot{}
 }

@@ -20,3 +20,17 @@ func TestParseNvidiaMemoryRejectsMalformedRows(t *testing.T) {
 		t.Fatal("malformed nvidia-smi row was accepted")
 	}
 }
+
+func TestNvidiaSMICommandCandidatesIncludeWSLShim(t *testing.T) {
+	candidates := nvidiaSMICommandCandidates()
+	found := false
+	for _, candidate := range candidates {
+		if candidate == "/usr/lib/wsl/lib/nvidia-smi" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("nvidia-smi candidates = %v, WSL shim missing", candidates)
+	}
+}
