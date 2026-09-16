@@ -4,7 +4,7 @@
 import type { WsInvokeChannel, WsInvokeRequest, WsInvokeResponse } from '@/shared/types/ws-channels'
 import type { ClusterInitialSnapshot } from '@/shared/types/bootstrap'
 import type { ClusterNode, ClusterNodeIdentity, Invite } from '@/shared/types/cluster'
-import type { FabricStatus, FabricWorker, FabricJob, FabricExecution } from '@/shared/types/fabric'
+import type { FabricStatus, FabricWorker, FabricJob, FabricExecution, FabricCapacity } from '@/shared/types/fabric'
 import type { EngineType } from '@/shared/types/engines'
 import type { ServiceError } from '@/shared/types/errors'
 import {
@@ -95,6 +95,14 @@ function fabricWorkerState(value: JsonValue | undefined): FabricWorker['state'] 
 
 function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
     const root = objectValue(value)
+    const capacityObject = objectValue(root?.capacity)
+    const capacity: FabricCapacity = {
+        workers: numberValue(capacityObject?.workers),
+        memoryFree: numberValue(capacityObject?.memoryFreeBytes),
+        gpuVramTotal: numberValue(capacityObject?.gpuVramTotalBytes),
+        gpuVramFree: numberValue(capacityObject?.gpuVramFreeBytes),
+        gpuCount: numberValue(capacityObject?.gpuCount)
+    }
     const workers: FabricWorker[] = Array.isArray(root?.workers)
         ? root.workers.map(item => {
               const obj = objectValue(item)
@@ -120,7 +128,7 @@ function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
     const executions: FabricExecution[] = Array.isArray(root?.executions)
         ? root.executions.map(item => { const obj = objectValue(item); return { jobId: stringValue(obj?.jobId), pid: numberValue(obj?.pid), state: stringValue(obj?.state), rpcPeers: numberValue(obj?.rpcPeers), httpPort: numberValue(obj?.httpPort) } })
         : []
-    return { workers, jobs, executions }
+    return { workers, capacity, jobs, executions }
 }
 
 /** Map our `EngineType` onto the `nvpair-engine-manager` engine identifier. */

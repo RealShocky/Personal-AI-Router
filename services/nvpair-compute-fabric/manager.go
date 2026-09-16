@@ -17,6 +17,14 @@ type WorkerRecord struct {
 	LastSeen  time.Time
 }
 
+type FabricCapacity struct {
+	Workers      uint32 `json:"workers"`
+	MemoryFree   uint64 `json:"memoryFreeBytes"`
+	GPUVramTotal uint64 `json:"gpuVramTotalBytes"`
+	GPUVramFree  uint64 `json:"gpuVramFreeBytes"`
+	GPUCount     uint32 `json:"gpuCount"`
+}
+
 type Manager struct {
 	mu      sync.RWMutex
 	timeout time.Duration
@@ -25,6 +33,23 @@ type Manager struct {
 
 func NewManager(timeout time.Duration) *Manager {
 	return &Manager{timeout: timeout, workers: make(map[string]WorkerRecord)}
+}
+
+func (m *Manager) Capacity() FabricCapacity {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var capacity FabricCapacity
+	for _, worker := range m.workers {
+		if worker.State != fabricwire.WorkerReady {
+			continue
+		}
+		capacity.Workers++
+		capacity.MemoryFree += worker.Heartbeat.MemoryFree
+		capacity.GPUVramTotal += worker.Heartbeat.GPUVramTotal
+		capacity.GPUVramFree += worker.Heartbeat.GPUVramFree
+		capacity.GPUCount += worker.Heartbeat.GPUCount
+	}
+	return capacity
 }
 
 func (m *Manager) AcceptHeartbeat(heartbeat fabricwire.Heartbeat, now time.Time) {

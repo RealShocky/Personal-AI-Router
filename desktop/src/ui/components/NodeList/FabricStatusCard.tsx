@@ -6,7 +6,7 @@ import { Flex, Stack, Text } from '@nvidia/foundations-react-core'
 import type { FabricStatus } from '@/shared/types/fabric'
 import { formatFabricGPUCapacity, formatFabricWorkerSummary } from './fabric-status-format'
 
-const EMPTY_STATUS: FabricStatus = { workers: [], jobs: [], executions: [] }
+const EMPTY_STATUS: FabricStatus = { workers: [], capacity: { workers: 0, memoryFree: 0, gpuVramTotal: 0, gpuVramFree: 0, gpuCount: 0 }, jobs: [], executions: [] }
 
 function stateLabel(status: FabricStatus): string {
     if (status.workers.some(worker => worker.state === 'quarantined')) return 'DEGRADED'
@@ -56,6 +56,11 @@ export default function FabricStatusCard() {
                 <Text kind="body/regular/sm" className="text-subtle-color">
                     {ready} ready worker{ready === 1 ? '' : 's'} · {status.workers.length} paired ·{' '}
                     {liveExecutions} active job{liveExecutions === 1 ? '' : 's'}
+                </Text>
+                <Text kind="body/regular/sm" className="text-subtle-color">
+                    Logical ready capacity: {status.capacity.workers} worker{status.capacity.workers === 1 ? '' : 's'} ·{' '}
+                    {(status.capacity.memoryFree / 1024 ** 3).toFixed(1)} GiB host RAM ·{' '}
+                    {status.capacity.gpuCount > 0 ? `${(status.capacity.gpuVramFree / 1024 ** 3).toFixed(1)}/${(status.capacity.gpuVramTotal / 1024 ** 3).toFixed(1)} GiB VRAM free` : 'no reported NVIDIA VRAM'}
                 </Text>
                 {status.workers.map(worker => (
                     <Flex key={worker.workerId} align="center" justify="between" gap="2">

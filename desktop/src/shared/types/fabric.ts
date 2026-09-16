@@ -34,8 +34,17 @@ export interface FabricExecution {
     httpPort: number
 }
 
+export interface FabricCapacity {
+    workers: number
+    memoryFree: number
+    gpuVramTotal: number
+    gpuVramFree: number
+    gpuCount: number
+}
+
 export interface FabricStatus {
     workers: FabricWorker[]
+    capacity: FabricCapacity
     jobs: FabricJob[]
     executions: FabricExecution[]
 }

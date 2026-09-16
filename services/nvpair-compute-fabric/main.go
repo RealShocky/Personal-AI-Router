@@ -339,7 +339,7 @@ func fabricHTTPHandler(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string) 
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
-		writeJSON(w, map[string]any{"workers": mgr.Workers()})
+		writeJSON(w, map[string]any{"workers": mgr.Workers(), "capacity": mgr.Capacity()})
 	})
 	mux.HandleFunc("/v1/fabric/rpc", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodConnect {
@@ -656,7 +656,7 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 		}
 		_ = codec.Respond(msg.ID, status)
 	case "fabric:get-status":
-		_ = codec.Respond(msg.ID, map[string]any{"workers": mgr.Workers(), "jobs": jobs.Jobs(), "executions": executions.Statuses()})
+		_ = codec.Respond(msg.ID, map[string]any{"workers": mgr.Workers(), "capacity": mgr.Capacity(), "jobs": jobs.Jobs(), "executions": executions.Statuses()})
 	case "fabric:job-submit":
 		var job JobRecord
 		if err := json.Unmarshal(msg.Params, &job); err != nil || jobs.Submit(job) != nil {

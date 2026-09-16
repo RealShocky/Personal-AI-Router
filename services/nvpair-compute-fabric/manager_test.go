@@ -103,3 +103,14 @@ func TestManagerAdmissionFiltersModelCheckpointAndMeasuredLatency(t *testing.T) 
 		t.Fatalf("plan = %+v, err = %v", plan, err)
 	}
 }
+
+func TestManagerCapacityAggregatesReadyWorkerResources(t *testing.T) {
+	m := NewManager(10 * time.Second)
+	now := time.Now()
+	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "w1", NodeID: "n1", State: fabricwire.WorkerReady, Epoch: 1, MemoryFree: 10, GPUVramTotal: 20, GPUVramFree: 8, GPUCount: 1}, now)
+	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "w2", NodeID: "n2", State: fabricwire.WorkerSuspect, Epoch: 1, MemoryFree: 30, GPUVramTotal: 40, GPUVramFree: 16, GPUCount: 2}, now)
+	got := m.Capacity()
+	if got.Workers != 1 || got.MemoryFree != 10 || got.GPUVramTotal != 20 || got.GPUVramFree != 8 || got.GPUCount != 1 {
+		t.Fatalf("capacity = %+v, want only ready worker resources", got)
+	}
+}

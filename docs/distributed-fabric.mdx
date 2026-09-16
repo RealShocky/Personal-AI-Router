@@ -75,6 +75,11 @@ unsupported or under-capacity groups rather than silently mixing devices.
 
 The coordinator JSON-RPC surface includes `fabric:job-start`, `fabric:job-stop`, and `fabric:job-status`; job start derives authenticated loopback relays from worker heartbeat endpoints and launches the configured llama.cpp server. The worker must advertise its fabric HTTPS endpoint with `--advertise-url`.
 
+`fabric:get-status` also returns a `capacity` object. Its values are the sum of
+currently `ready` workers’ free host memory, reported GPU count, and reported
+free/total NVIDIA VRAM. This is PAIR’s logical capacity view for scheduling;
+it is not an OS-level unified memory device.
+
 The desktop launcher accepts explicit adapter configuration through
 `NVPAIR_FABRIC_*` environment variables (for example
 `NVPAIR_FABRIC_LLAMA_SERVER_PATH`, `NVPAIR_FABRIC_LLAMA_MODEL`,
