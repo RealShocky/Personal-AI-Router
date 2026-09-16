@@ -218,6 +218,8 @@ DGX, also set `PAIR_TRAINING_CHECKPOINT_ROOT` to the host directory mounted as
 `/opt/nvpair/training` (for example `/home/admin/pair-fabric`). This lets the
 host-side status process read manifests produced inside the disposable
 container and is required for automatic checkpoint recovery.
+Set `PAIR_TRAINING_HOST_ROOT` to the same directory so the DGX launcher can
+mount it without assuming a particular username or home path.
 The DGX wrapper exposes all GPUs by default; set its PAIR-owned
 `PAIR_TRAINING_CUDA_VISIBLE_DEVICES` environment variable to an explicit device
 list when isolating a canary.
