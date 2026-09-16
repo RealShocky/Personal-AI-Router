@@ -35,7 +35,7 @@ import type { ServiceError } from '@/shared/types/errors'
 import type { NodeItem } from '@/shared/types/nodes'
 import type { NodeItemMetrics } from '@/shared/types/metrics'
 import type { Workload } from '@/shared/types/workloads'
-import type { FabricStatus, FabricTrainingRequest, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingNode, FabricInferenceRequest, FabricExecution, FabricGroupRequest, FabricGroupPlan } from '@/shared/types/fabric'
+import type { FabricStatus, FabricTrainingRequest, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingNode, FabricInferenceRequest, FabricExecution, FabricGroupRequest, FabricGroupPlan, FabricLogicalDeviceDescribe, FabricLogicalDevicePlanRequest, FabricLogicalDevicePlan, FabricLogicalDeviceStatus, FabricTransferRequest, FabricTransferStatus } from '@/shared/types/fabric'
 import type {
     AvailableNode,
     ClusterIdentityPayload,
@@ -92,6 +92,10 @@ export interface WsInvokeChannelMap {
 
     // Distributed compute fabric
     'fabric:get-status': { request: void; response: FabricStatus }
+    'fabric:logical-device-describe': { request: void; response: FabricLogicalDeviceDescribe }
+    'fabric:logical-device-plan': { request: FabricLogicalDevicePlanRequest; response: FabricLogicalDevicePlan }
+    'fabric:logical-device-status': { request: { planId: string }; response: FabricLogicalDeviceStatus }
+    'fabric:logical-device-transfer': { request: FabricTransferRequest; response: FabricTransferStatus }
     'fabric:plan': { request: FabricGroupRequest; response: FabricGroupPlan }
     'fabric:inference-start': { request: FabricInferenceRequest; response: FabricExecution }
     'fabric:inference-status': { request: { jobId: string }; response: FabricExecution }

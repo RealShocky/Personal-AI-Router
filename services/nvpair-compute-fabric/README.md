@@ -187,6 +187,13 @@ The same `requestId` is idempotent and returns the original plan. Later logical
 device methods operate on that plan's ID and epoch; an old epoch is rejected
 rather than applied to a newer plan.
 
+`fabric:logical-device-describe` returns the currently advertised CPU, CUDA,
+and Metal provider capabilities. `fabric:logical-device-status` returns the
+authoritative plan epoch, page owners, and transfer IDs. A
+`fabric:logical-device-transfer` request creates a queued transfer; ownership
+changes only after the provider reports a matching digest through the service
+state path.
+
 ## Test
 
 ```bash

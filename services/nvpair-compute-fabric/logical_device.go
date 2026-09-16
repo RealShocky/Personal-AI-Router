@@ -13,19 +13,21 @@ import (
 )
 
 type LogicalDeviceManager struct {
-	mu       sync.RWMutex
-	workers  *Manager
-	plans    map[string]fabricwire.LogicalDevicePlan
-	requests map[string]fabricwire.LogicalDevicePlan
-	states   map[string]fabricwire.LogicalDeviceState
+	mu        sync.RWMutex
+	workers   *Manager
+	plans     map[string]fabricwire.LogicalDevicePlan
+	requests  map[string]fabricwire.LogicalDevicePlan
+	states    map[string]fabricwire.LogicalDeviceState
+	transfers map[string]fabricwire.TransferStatus
 }
 
 func NewLogicalDeviceManager(workers *Manager) *LogicalDeviceManager {
 	return &LogicalDeviceManager{
-		workers:  workers,
-		plans:    make(map[string]fabricwire.LogicalDevicePlan),
-		requests: make(map[string]fabricwire.LogicalDevicePlan),
-		states:   make(map[string]fabricwire.LogicalDeviceState),
+		workers:   workers,
+		plans:     make(map[string]fabricwire.LogicalDevicePlan),
+		requests:  make(map[string]fabricwire.LogicalDevicePlan),
+		states:    make(map[string]fabricwire.LogicalDeviceState),
+		transfers: make(map[string]fabricwire.TransferStatus),
 	}
 }
 
@@ -60,9 +62,9 @@ func (m *LogicalDeviceManager) Describe() fabricwire.LogicalDeviceDescribe {
 
 func (m *LogicalDeviceManager) Status(planID string) (fabricwire.LogicalDeviceStatus, bool) {
 	m.mu.RLock()
+	defer m.mu.RUnlock()
 	plan, ok := m.plans[planID]
 	state := m.states[planID]
-	m.mu.RUnlock()
 	if !ok {
 		return fabricwire.LogicalDeviceStatus{}, false
 	}
@@ -73,7 +75,89 @@ func (m *LogicalDeviceManager) Status(planID string) (fabricwire.LogicalDeviceSt
 	for _, worker := range plan.Workers {
 		workers = append(workers, worker.WorkerID)
 	}
-	return fabricwire.LogicalDeviceStatus{PlanID: plan.PlanID, Epoch: plan.Epoch, State: state, Workers: workers, Pages: append([]fabricwire.PagePlacement(nil), plan.Pages...), UpdatedAtMS: time.Now().UnixMilli()}, true
+	transferIDs := make([]string, 0)
+	for id, transfer := range m.transfers {
+		if transfer.PlanID == plan.PlanID {
+			transferIDs = append(transferIDs, id)
+		}
+	}
+	sort.Strings(transferIDs)
+	return fabricwire.LogicalDeviceStatus{PlanID: plan.PlanID, Epoch: plan.Epoch, State: state, Workers: workers, Pages: append([]fabricwire.PagePlacement(nil), plan.Pages...), TransferIDs: transferIDs, UpdatedAtMS: time.Now().UnixMilli()}, true
+}
+
+func (m *LogicalDeviceManager) Transfer(request fabricwire.TransferRequest) (fabricwire.TransferStatus, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	plan, ok := m.plans[request.PlanID]
+	if !ok {
+		return fabricwire.TransferStatus{}, fmt.Errorf("logical device plan %q not found", request.PlanID)
+	}
+	if err := request.ValidateForEpoch(plan.Epoch); err != nil {
+		return fabricwire.TransferStatus{}, err
+	}
+	if existing, ok := m.transfers[request.RequestID]; ok {
+		return existing, nil
+	}
+	if request.PageID == "" || request.TargetWorkerID == "" || request.TargetTierID == "" || request.ExpectedDigest == "" {
+		return fabricwire.TransferStatus{}, fmt.Errorf("transfer requires pageId, target worker and tier, and expected digest")
+	}
+	var page fabricwire.PagePlacement
+	found := false
+	for _, candidate := range plan.Pages {
+		if candidate.PageID == request.PageID && !candidate.Replica {
+			page = candidate
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fabricwire.TransferStatus{}, fmt.Errorf("page %q not found in logical device plan", request.PageID)
+	}
+	worker, ok := m.workers.Worker(request.TargetWorkerID)
+	if !ok || worker.State != fabricwire.WorkerReady {
+		return fabricwire.TransferStatus{}, fmt.Errorf("target worker %q is not ready", request.TargetWorkerID)
+	}
+	transfer := fabricwire.TransferStatus{TransferID: request.RequestID, PlanID: plan.PlanID, Epoch: plan.Epoch, PageID: page.PageID, SourceWorkerID: page.WorkerID, TargetWorkerID: request.TargetWorkerID, TargetTierID: request.TargetTierID, ExpectedDigest: request.ExpectedDigest, State: fabricwire.TransferQueued, Bytes: page.Bytes}
+	m.transfers[transfer.TransferID] = transfer
+	return transfer, nil
+}
+
+func (m *LogicalDeviceManager) CompleteTransfer(transferID, digest string) (fabricwire.TransferStatus, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	transfer, ok := m.transfers[transferID]
+	if !ok {
+		return fabricwire.TransferStatus{}, fmt.Errorf("transfer %q not found", transferID)
+	}
+	if transfer.State != fabricwire.TransferQueued {
+		return transfer, fmt.Errorf("transfer %q is not queued", transferID)
+	}
+	if digest != transfer.ExpectedDigest {
+		transfer.State = fabricwire.TransferFailed
+		transfer.Error = "transfer digest mismatch"
+		m.transfers[transferID] = transfer
+		return transfer, fmt.Errorf("transfer digest mismatch")
+	}
+	for _, next := range []fabricwire.TransferState{fabricwire.TransferAdmitted, fabricwire.TransferCopying, fabricwire.TransferVerified} {
+		if !fabricwire.CanTransitionTransfer(transfer.State, next) {
+			return transfer, fmt.Errorf("invalid transfer transition %q to %q", transfer.State, next)
+		}
+		transfer.State = next
+	}
+	plan := m.plans[transfer.PlanID]
+	for index, page := range plan.Pages {
+		if page.PageID == transfer.PageID && !page.Replica {
+			page.WorkerID = transfer.TargetWorkerID
+			page.TierID = transfer.TargetTierID
+			page.Digest = digest
+			plan.Pages[index] = page
+			break
+		}
+	}
+	m.plans[transfer.PlanID] = plan
+	m.requests[plan.PlanID] = plan
+	m.transfers[transferID] = transfer
+	return transfer, nil
 }
 
 func (m *LogicalDeviceManager) Plan(request fabricwire.LogicalDevicePlanRequest) (fabricwire.LogicalDevicePlan, error) {

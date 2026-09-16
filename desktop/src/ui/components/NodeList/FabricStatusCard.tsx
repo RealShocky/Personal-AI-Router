@@ -43,6 +43,10 @@ export default function FabricStatusCard() {
 
     const ready = status.workers.filter(worker => worker.state === 'ready').length
     const liveExecutions = status.executions.filter(execution => execution.state === 'running').length
+    const logicalProviders = status.logicalDevice?.providers ?? []
+    const providerSummary = logicalProviders.length === 0
+        ? 'no provider capabilities reported'
+        : logicalProviders.map(provider => `${provider.provider}:${provider.deviceId}`).join(' · ')
 
     return (
         <div className="node-card pair-paper mb-3" data-fabric-status>
@@ -63,6 +67,9 @@ export default function FabricStatusCard() {
                     Logical ready capacity: {status.capacity.workers} worker{status.capacity.workers === 1 ? '' : 's'} ·{' '}
                     {(status.capacity.memoryFree / 1024 ** 3).toFixed(1)} GiB host RAM ·{' '}
                     {status.capacity.gpuCount > 0 ? `${(status.capacity.gpuVramFree / 1024 ** 3).toFixed(1)}/${(status.capacity.gpuVramTotal / 1024 ** 3).toFixed(1)} GiB VRAM free` : 'no reported NVIDIA VRAM'}
+                </Text>
+                <Text kind="body/regular/sm" className="text-subtle-color">
+                    Logical providers: {providerSummary}. Memory tiers are explicit; capacity is schedulable, not contiguous VRAM.
                 </Text>
                 {status.workers.map(worker => (
                     <Flex key={worker.workerId} align="center" justify="between" gap="2">

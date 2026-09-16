@@ -13,7 +13,7 @@ import type { NodeItem } from '@/shared/types/nodes'
 import type { ServiceError } from '@/shared/types/errors'
 import type { NodeItemMetrics } from '@/shared/types/metrics'
 import type { Workload } from '@/shared/types/workloads'
-import type { FabricStatus, FabricTrainingRequest, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingNode, FabricInferenceRequest, FabricExecution, FabricGroupPlan, FabricGroupRequest } from '@/shared/types/fabric'
+import type { FabricStatus, FabricTrainingRequest, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingNode, FabricInferenceRequest, FabricExecution, FabricGroupPlan, FabricGroupRequest, FabricLogicalDeviceDescribe, FabricLogicalDevicePlanRequest, FabricLogicalDevicePlan, FabricLogicalDeviceStatus, FabricTransferRequest, FabricTransferStatus } from '@/shared/types/fabric'
 import type { AppInitialSnapshot, ClusterInitialSnapshot } from '@/shared/types/bootstrap'
 
 // ---------------------------------------------------------------------------
@@ -83,6 +83,10 @@ export interface IDiscoveryApi {
 export interface IFabricApi {
     /** Read-only coordinator snapshot for the logical distributed inference fabric. */
     getStatus(): Promise<FabricStatus>
+    describeLogicalDevice(): Promise<FabricLogicalDeviceDescribe>
+    planLogicalDevice(request: FabricLogicalDevicePlanRequest): Promise<FabricLogicalDevicePlan>
+    getLogicalDeviceStatus(planId: string): Promise<FabricLogicalDeviceStatus>
+    transferLogicalDevicePage(request: FabricTransferRequest): Promise<FabricTransferStatus>
     /** Ask the coordinator to admit a group without launching a job. */
     planGroup(request: FabricGroupRequest): Promise<FabricGroupPlan>
     startInference(request: FabricInferenceRequest): Promise<FabricExecution>
@@ -188,6 +192,10 @@ export function createPairApi(transport: ServiceTransport): IPairApi {
         engines: createEngineApi(transport),
         fabric: {
             getStatus: () => transport.invoke('fabric:get-status'),
+            describeLogicalDevice: () => transport.invoke('fabric:logical-device-describe'),
+            planLogicalDevice: request => transport.invoke('fabric:logical-device-plan', request),
+            getLogicalDeviceStatus: planId => transport.invoke('fabric:logical-device-status', { planId }),
+            transferLogicalDevicePage: request => transport.invoke('fabric:logical-device-transfer', request),
             planGroup: request => transport.invoke('fabric:plan', request),
             startInference: request => transport.invoke('fabric:inference-start', request),
             getInferenceStatus: jobId => transport.invoke('fabric:inference-status', { jobId }),

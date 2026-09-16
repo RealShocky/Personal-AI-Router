@@ -191,3 +191,25 @@ func CanTransitionTransfer(from, to TransferState) bool {
 		return false
 	}
 }
+
+type TransferRequest struct {
+	LogicalDeviceRequest
+	PageID         string `json:"pageId"`
+	TargetWorkerID string `json:"targetWorkerId"`
+	TargetTierID   string `json:"targetTierId"`
+	ExpectedDigest string `json:"expectedDigest"`
+}
+
+type TransferStatus struct {
+	TransferID     string        `json:"transferId"`
+	PlanID         string        `json:"planId"`
+	Epoch          uint64        `json:"epoch"`
+	PageID         string        `json:"pageId"`
+	SourceWorkerID string        `json:"sourceWorkerId"`
+	TargetWorkerID string        `json:"targetWorkerId"`
+	TargetTierID   string        `json:"targetTierId"`
+	ExpectedDigest string        `json:"expectedDigest"`
+	State          TransferState `json:"state"`
+	Bytes          uint64        `json:"bytes"`
+	Error          string        `json:"error,omitempty"`
+}

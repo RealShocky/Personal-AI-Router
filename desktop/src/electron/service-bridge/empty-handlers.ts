@@ -4,7 +4,7 @@
 import type { WsInvokeChannel, WsInvokeRequest, WsInvokeResponse } from '@/shared/types/ws-channels'
 import type { ClusterInitialSnapshot } from '@/shared/types/bootstrap'
 import type { ClusterNode, ClusterNodeIdentity, Invite } from '@/shared/types/cluster'
-import type { FabricStatus, FabricWorker, FabricJob, FabricExecution, FabricCapacity, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingRequest, FabricTrainingNode, FabricInferenceRequest, FabricGroupPlan } from '@/shared/types/fabric'
+import type { FabricStatus, FabricWorker, FabricJob, FabricExecution, FabricCapacity, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingRequest, FabricTrainingNode, FabricInferenceRequest, FabricGroupPlan, FabricLogicalDeviceDescribe, FabricProvider, FabricProviderCapability, FabricMemoryTier, FabricLogicalDevicePlan, FabricLogicalDeviceStatus, FabricTransferStatus, FabricLogicalDevicePlanRequest, FabricTransferRequest } from '@/shared/types/fabric'
 import type { EngineType } from '@/shared/types/engines'
 import type { ServiceError } from '@/shared/types/errors'
 import {
@@ -173,7 +173,123 @@ export function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
     const executions: FabricExecution[] = Array.isArray(root?.executions)
         ? root.executions.map(item => parseFabricExecution(item))
         : []
-    return { workers, capacity, jobs, executions }
+    const logicalDevice = parseFabricLogicalDevice(root?.logicalDevice)
+    return logicalDevice === undefined ? { workers, capacity, jobs, executions } : { workers, capacity, jobs, executions, logicalDevice }
+}
+
+function fabricProvider(value: JsonValue | undefined): FabricProvider {
+    const provider = stringValue(value)
+    return provider === 'cuda' || provider === 'metal' ? provider : 'cpu'
+}
+
+function parseFabricMemoryTier(value: JsonValue | undefined): FabricMemoryTier {
+    const obj = objectValue(value)
+    return {
+        tierId: stringValue(obj?.tierId),
+        kind: stringValue(obj?.kind),
+        capacityBytes: numberValue(obj?.capacityBytes),
+        freeBytes: numberValue(obj?.freeBytes),
+        ...(obj?.bandwidthBytesPerSec === undefined ? {} : { bandwidthBytesPerSec: numberValue(obj.bandwidthBytesPerSec) }),
+        ...(obj?.latencyMicros === undefined ? {} : { latencyMicros: numberValue(obj.latencyMicros) }),
+        local: booleanValue(obj?.local)
+    }
+}
+
+function parseFabricProviderCapability(value: JsonValue | undefined): FabricProviderCapability {
+    const obj = objectValue(value)
+    return {
+        provider: fabricProvider(obj?.provider),
+        deviceId: stringValue(obj?.deviceId),
+        supportsExecution: booleanValue(obj?.supportsExecution),
+        supportsCollectives: stringArray(obj?.supportsCollectives),
+        memoryTiers: Array.isArray(obj?.memoryTiers) ? obj.memoryTiers.map(item => parseFabricMemoryTier(item)) : [],
+        maxPageBytes: numberValue(obj?.maxPageBytes)
+    }
+}
+
+function parseFabricLogicalDevice(value: JsonValue | undefined): FabricLogicalDeviceDescribe | undefined {
+    const obj = objectValue(value)
+    if (obj === null) return undefined
+    return {
+        protocolVersion: numberValue(obj.protocolVersion),
+        workerId: stringValue(obj.workerId),
+        providers: Array.isArray(obj.providers) ? obj.providers.map(item => parseFabricProviderCapability(item)) : []
+    }
+}
+
+export function parseFabricLogicalDeviceDescribe(value: JsonValue | undefined): FabricLogicalDeviceDescribe {
+    return parseFabricLogicalDevice(value) ?? { protocolVersion: 0, workerId: '', providers: [] }
+}
+
+function parseFabricPagePlacement(value: JsonValue | undefined): FabricLogicalDevicePlan['pages'][number] {
+    const obj = objectValue(value)
+    return {
+        pageId: stringValue(obj?.pageId),
+        bytes: numberValue(obj?.bytes),
+        ...(obj?.dtype === undefined ? {} : { dtype: stringValue(obj.dtype) }),
+        ...(obj?.layout === undefined ? {} : { layout: stringValue(obj.layout) }),
+        workerId: stringValue(obj?.workerId),
+        tierId: stringValue(obj?.tierId),
+        ...(obj?.digest === undefined ? {} : { digest: stringValue(obj.digest) }),
+        epoch: numberValue(obj?.epoch),
+        ...(obj?.replica === undefined ? {} : { replica: booleanValue(obj.replica) })
+    }
+}
+
+export function parseFabricLogicalDevicePlan(value: JsonValue | undefined): FabricLogicalDevicePlan {
+    const obj = objectValue(value)
+    const workers = Array.isArray(obj?.workers) ? obj.workers.map(item => {
+        const worker = objectValue(item)
+        return {
+            workerId: stringValue(worker?.workerId),
+            ...(worker?.peerId === undefined ? {} : { peerId: stringValue(worker.peerId) }),
+            ...(worker?.endpoint === undefined ? {} : { endpoint: stringValue(worker.endpoint) }),
+            shardIndex: numberValue(worker?.shardIndex),
+            memoryBudgetBytes: numberValue(worker?.memoryBudgetBytes),
+            ...(worker?.gpuVramBudgetBytes === undefined ? {} : { gpuVramBudgetBytes: numberValue(worker.gpuVramBudgetBytes) })
+        }
+    }) : []
+    return {
+        version: numberValue(obj?.version),
+        planId: stringValue(obj?.planId),
+        epoch: numberValue(obj?.epoch),
+        runtime: stringValue(obj?.runtime),
+        modelDigest: stringValue(obj?.modelDigest),
+        shardStrategy: obj?.shardStrategy === 'tensor' || obj?.shardStrategy === 'pipeline' ? obj.shardStrategy : 'replicated',
+        workers,
+        pages: Array.isArray(obj?.pages) ? obj.pages.map(item => parseFabricPagePlacement(item)) : []
+    }
+}
+
+export function parseFabricLogicalDeviceStatus(value: JsonValue | undefined): FabricLogicalDeviceStatus {
+    const obj = objectValue(value)
+    return {
+        planId: stringValue(obj?.planId),
+        epoch: numberValue(obj?.epoch),
+        state: stringValue(obj?.state),
+        workers: stringArray(obj?.workers),
+        pages: Array.isArray(obj?.pages) ? obj.pages.map(item => parseFabricPagePlacement(item)) : [],
+        transferIds: stringArray(obj?.transferIds),
+        updatedAtMs: numberValue(obj?.updatedAtMs)
+    }
+}
+
+export function parseFabricTransferStatus(value: JsonValue | undefined): FabricTransferStatus {
+    const obj = objectValue(value)
+    const state = stringValue(obj?.state)
+    return {
+        transferId: stringValue(obj?.transferId),
+        planId: stringValue(obj?.planId),
+        epoch: numberValue(obj?.epoch),
+        pageId: stringValue(obj?.pageId),
+        sourceWorkerId: stringValue(obj?.sourceWorkerId),
+        targetWorkerId: stringValue(obj?.targetWorkerId),
+        targetTierId: stringValue(obj?.targetTierId),
+        expectedDigest: stringValue(obj?.expectedDigest),
+        state: state === 'admitted' || state === 'copying' || state === 'verified' || state === 'failed' || state === 'cancelled' ? state : 'queued',
+        bytes: numberValue(obj?.bytes),
+        ...(obj?.error === undefined ? {} : { error: stringValue(obj.error) })
+    }
 }
 
 function parseFabricTrainingExecution(value: JsonValue | undefined): FabricTrainingExecution {
@@ -237,6 +353,41 @@ function fabricInferenceRequestJson(request: FabricInferenceRequest | undefined)
         ...(request.checkpointFile === undefined ? {} : { checkpointFile: request.checkpointFile }),
         ...(request.checkpointIntervalSeconds === undefined ? {} : { checkpointIntervalSeconds: request.checkpointIntervalSeconds }),
         group: fabricGroupRequestJson(request.group)
+    }
+}
+
+function fabricLogicalDevicePlanRequestJson(request: FabricLogicalDevicePlanRequest): JsonObject {
+    return {
+        protocolVersion: request.protocolVersion,
+        requestId: request.requestId,
+        ...(request.planId === undefined ? {} : { planId: request.planId }),
+        ...(request.epoch === undefined ? {} : { epoch: request.epoch }),
+        ...(request.deadlineUnixMs === undefined ? {} : { deadlineUnixMs: request.deadlineUnixMs }),
+        runtime: request.runtime,
+        modelDigest: request.modelDigest,
+        shardStrategy: request.shardStrategy,
+        ...(request.providers === undefined ? {} : { providers: request.providers }),
+        workerGoal: request.workerGoal,
+        pages: request.pages.map(page => ({
+            pageId: page.pageId,
+            bytes: page.bytes,
+            ...(page.dtype === undefined ? {} : { dtype: page.dtype }),
+            ...(page.layout === undefined ? {} : { layout: page.layout })
+        }))
+    }
+}
+
+function fabricLogicalDeviceTransferJson(request: FabricTransferRequest): JsonObject {
+    return {
+        protocolVersion: request.protocolVersion,
+        requestId: request.requestId,
+        planId: request.planId,
+        epoch: request.epoch,
+        ...(request.deadlineUnixMs === undefined ? {} : { deadlineUnixMs: request.deadlineUnixMs }),
+        pageId: request.pageId,
+        targetWorkerId: request.targetWorkerId,
+        targetTierId: request.targetTierId,
+        expectedDigest: request.expectedDigest
     }
 }
 
@@ -1138,6 +1289,19 @@ const EMPTY_SERVICE_BRIDGE_HANDLERS: BridgeHandlerMap = {
     'discovery:get-nodes': () => getModularBridgeState().getAvailableNodes(),
 
     'fabric:get-status': async () => parseFabricStatus(await callCluster('fabric:get-status')),
+    'fabric:logical-device-describe': async () => parseFabricLogicalDeviceDescribe(await callCluster('fabric:logical-device-describe')),
+    'fabric:logical-device-plan': async payload => {
+        if (!payload) throw new Error('logical device plan request is required')
+        return parseFabricLogicalDevicePlan(await callCluster('fabric:logical-device-plan', fabricLogicalDevicePlanRequestJson(payload)))
+    },
+    'fabric:logical-device-status': async payload => {
+        if (!payload) throw new Error('logical device status request is required')
+        return parseFabricLogicalDeviceStatus(await callCluster('fabric:logical-device-status', payload))
+    },
+    'fabric:logical-device-transfer': async payload => {
+        if (!payload) throw new Error('logical device transfer request is required')
+        return parseFabricTransferStatus(await callCluster('fabric:logical-device-transfer', fabricLogicalDeviceTransferJson(payload)))
+    },
     'fabric:plan': async payload => {
         if (!payload) throw new Error('fabric group request is required')
         return parseFabricGroupPlan(await callCluster('fabric:plan-group', fabricGroupRequestJson(payload)))

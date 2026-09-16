@@ -1097,6 +1097,22 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		_ = codec.Respond(msg.ID, status)
+	case "fabric:logical-device-transfer":
+		if logicalDevice == nil {
+			_ = codec.RespondError(msg.ID, -32001, "logical device manager unavailable")
+			return
+		}
+		var request fabricwire.TransferRequest
+		if err := json.Unmarshal(msg.Params, &request); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid logical device transfer request")
+			return
+		}
+		transfer, err := logicalDevice.Transfer(request)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32001, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, transfer)
 	case "fabric:build-training-command":
 		var params struct {
 			Request  TrainingRequest `json:"request"`
@@ -1219,7 +1235,11 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 		}
 		_ = codec.Respond(msg.ID, status)
 	case "fabric:get-status":
-		_ = codec.Respond(msg.ID, map[string]any{"workers": mgr.Workers(), "capacity": mgr.Capacity(), "jobs": jobs.Jobs(), "executions": executions.Statuses()})
+		var logicalDeviceStatus any
+		if logicalDevice != nil {
+			logicalDeviceStatus = logicalDevice.Describe()
+		}
+		_ = codec.Respond(msg.ID, map[string]any{"workers": mgr.Workers(), "capacity": mgr.Capacity(), "jobs": jobs.Jobs(), "executions": executions.Statuses(), "logicalDevice": logicalDeviceStatus})
 	case "fabric:job-submit":
 		var job JobRecord
 		if err := json.Unmarshal(msg.Params, &job); err != nil || jobs.Submit(job) != nil {

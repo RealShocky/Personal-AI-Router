@@ -95,11 +95,115 @@ export interface FabricCapacity {
     gpuCount: number
 }
 
+export type FabricProvider = 'cpu' | 'cuda' | 'metal'
+
+export interface FabricMemoryTier {
+    tierId: string
+    kind: string
+    capacityBytes: number
+    freeBytes: number
+    bandwidthBytesPerSec?: number
+    latencyMicros?: number
+    local: boolean
+}
+
+export interface FabricProviderCapability {
+    provider: FabricProvider
+    deviceId: string
+    supportsExecution: boolean
+    supportsCollectives: string[]
+    memoryTiers: FabricMemoryTier[]
+    maxPageBytes: number
+}
+
+export interface FabricLogicalDeviceDescribe {
+    protocolVersion: number
+    workerId: string
+    providers: FabricProviderCapability[]
+}
+
+export interface FabricPageSpec {
+    pageId: string
+    bytes: number
+    dtype?: string
+    layout?: string
+}
+
+export interface FabricLogicalDeviceRequest {
+    protocolVersion: number
+    requestId: string
+    planId?: string
+    epoch?: number
+    deadlineUnixMs?: number
+}
+
+export interface FabricLogicalDevicePlanRequest extends FabricLogicalDeviceRequest {
+    runtime: string
+    modelDigest: string
+    shardStrategy: 'replicated' | 'tensor' | 'pipeline'
+    providers?: FabricProvider[]
+    workerGoal: number
+    pages: FabricPageSpec[]
+}
+
+export interface FabricPagePlacement extends FabricPageSpec {
+    workerId: string
+    tierId: string
+    digest?: string
+    epoch: number
+    replica?: boolean
+}
+
+export interface FabricLogicalDevicePlan {
+    version: number
+    planId: string
+    epoch: number
+    runtime: string
+    modelDigest: string
+    shardStrategy: 'replicated' | 'tensor' | 'pipeline'
+    workers: Array<{ workerId: string; peerId?: string; endpoint?: string; shardIndex: number; memoryBudgetBytes: number; gpuVramBudgetBytes?: number }>
+    pages: FabricPagePlacement[]
+}
+
+export interface FabricTransferRequest extends FabricLogicalDeviceRequest {
+    planId: string
+    epoch: number
+    pageId: string
+    targetWorkerId: string
+    targetTierId: string
+    expectedDigest: string
+}
+
+export interface FabricTransferStatus {
+    transferId: string
+    planId: string
+    epoch: number
+    pageId: string
+    sourceWorkerId: string
+    targetWorkerId: string
+    targetTierId: string
+    expectedDigest: string
+    state: 'queued' | 'admitted' | 'copying' | 'verified' | 'failed' | 'cancelled'
+    bytes: number
+    error?: string
+}
+
+export interface FabricLogicalDeviceStatus {
+    planId: string
+    epoch: number
+    state: string
+    workers: string[]
+    pages: FabricPagePlacement[]
+    transferIds: string[]
+    updatedAtMs: number
+}
+
 export interface FabricStatus {
     workers: FabricWorker[]
     capacity: FabricCapacity
     jobs: FabricJob[]
     executions: FabricExecution[]
+    logicalDevice?: FabricLogicalDeviceDescribe
 }
 
 export type FabricTrainingParallelism = 'data' | 'fsdp'

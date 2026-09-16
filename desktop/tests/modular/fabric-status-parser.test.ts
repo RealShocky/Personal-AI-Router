@@ -65,4 +65,30 @@ describe('fabric status parser', () => {
             gpuCount: 0
         })
     })
+
+    test('normalizes logical device provider capabilities', () => {
+        const status = parseFabricStatus({
+            capacity: { workers: 1, memoryFreeBytes: 4096, gpuVramTotalBytes: 8192, gpuVramFreeBytes: 4096, gpuCount: 1 },
+            workers: [],
+            jobs: [],
+            executions: [],
+            logicalDevice: {
+                protocolVersion: 1,
+                workerId: 'coordinator',
+                providers: [{
+                    provider: 'cuda',
+                    deviceId: 'dgx-spark-gb10',
+                    supportsExecution: true,
+                    memoryTiers: [{ tierId: 'gpu', kind: 'gpu', capacityBytes: 8192, freeBytes: 4096, local: true }]
+                }]
+            }
+        })
+
+        expect(status.logicalDevice?.providers[0]).toMatchObject({
+            provider: 'cuda',
+            deviceId: 'dgx-spark-gb10',
+            supportsExecution: true
+        })
+        expect(status.logicalDevice?.providers[0].memoryTiers[0].freeBytes).toBe(4096)
+    })
 })
