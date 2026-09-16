@@ -114,3 +114,14 @@ func TestManagerCapacityAggregatesReadyWorkerResources(t *testing.T) {
 		t.Fatalf("capacity = %+v, want only ready worker resources", got)
 	}
 }
+
+func TestManagerAdmissionFiltersGPUVRAMCapacity(t *testing.T) {
+	m := NewManager(time.Second)
+	now := time.Unix(100, 0)
+	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "small", NodeID: "n1", State: fabricwire.WorkerReady, Epoch: 1, Runtime: "llama.cpp", Backends: []string{"cuda"}, GPUVramTotal: 8 << 30, GPUVramFree: 2 << 30}, now)
+	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "large", NodeID: "n2", State: fabricwire.WorkerReady, Epoch: 1, Runtime: "llama.cpp", Backends: []string{"cuda"}, GPUVramTotal: 16 << 30, GPUVramFree: 12 << 30}, now)
+	plan, err := m.PlanGroup(fabricwire.GroupRequest{GroupID: "g-vram", Runtime: "llama.cpp", Backends: []string{"cuda"}, WorkerGoal: 1, MinGPUVramTotalBytes: 12 << 30, MinGPUVramFreeBytes: 8 << 30})
+	if err != nil || len(plan.Workers) != 1 || plan.Workers[0] != "large" {
+		t.Fatalf("VRAM-aware plan = %+v, err = %v", plan, err)
+	}
+}

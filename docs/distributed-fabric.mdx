@@ -73,6 +73,11 @@ a new group and resumed from the last accepted stage when the runtime adapter
 supports that stage. Group planning is not tensor execution: it will reject
 unsupported or under-capacity groups rather than silently mixing devices.
 
+GPU-aware placement can additionally set `minGpuVramTotalBytes` and
+`minGpuVramFreeBytes`. Workers without reported NVIDIA VRAM do not satisfy
+those constraints, preventing assignment to a worker that cannot prove enough
+GPU capacity.
+
 The coordinator JSON-RPC surface includes `fabric:job-start`, `fabric:job-stop`, and `fabric:job-status`; job start derives authenticated loopback relays from worker heartbeat endpoints and launches the configured llama.cpp server. The worker must advertise its fabric HTTPS endpoint with `--advertise-url`.
 
 `fabric:get-status` also returns a `capacity` object. Its values are the sum of

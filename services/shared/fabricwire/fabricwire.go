@@ -73,6 +73,8 @@ type GroupRequest struct {
 	RequireCheckpoint     bool     `json:"requireCheckpoint,omitempty"`
 	MaxProbeLatencyMillis uint64   `json:"maxProbeLatencyMillis,omitempty"`
 	MinMemoryFreeBytes    uint64   `json:"minMemoryFreeBytes,omitempty"`
+	MinGPUVramTotalBytes  uint64   `json:"minGpuVramTotalBytes,omitempty"`
+	MinGPUVramFreeBytes   uint64   `json:"minGpuVramFreeBytes,omitempty"`
 }
 
 type GroupPlan struct {

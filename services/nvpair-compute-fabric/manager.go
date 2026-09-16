@@ -171,6 +171,12 @@ func (m *Manager) PlanGroup(request fabricwire.GroupRequest) (fabricwire.GroupPl
 		if request.MinMemoryFreeBytes > 0 && worker.Heartbeat.MemoryFree < request.MinMemoryFreeBytes {
 			continue
 		}
+		if request.MinGPUVramTotalBytes > 0 && worker.Heartbeat.GPUVramTotal < request.MinGPUVramTotalBytes {
+			continue
+		}
+		if request.MinGPUVramFreeBytes > 0 && worker.Heartbeat.GPUVramFree < request.MinGPUVramFreeBytes {
+			continue
+		}
 		if request.MaxProbeLatencyMillis > 0 && (worker.Heartbeat.ProbeLatencyMillis == 0 || worker.Heartbeat.ProbeLatencyMillis > request.MaxProbeLatencyMillis) {
 			continue
 		}
