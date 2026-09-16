@@ -473,10 +473,11 @@ func (m *TrainingManager) Start(request TrainingRequest, nodeRank uint32) (Train
 		return TrainingExecution{}, err
 	}
 	m.mu.Lock()
-	if _, exists := m.executions[request.JobID]; exists {
+	if process, exists := m.executions[request.JobID]; exists && process.execution.State == "running" {
 		m.mu.Unlock()
 		return TrainingExecution{}, fmt.Errorf("training job is already running")
 	}
+	delete(m.executions, request.JobID)
 	m.mu.Unlock()
 	cmd := m.command(m.ctx, args[0], args[1:]...)
 	cmd.Stdout = os.Stderr
@@ -521,8 +522,21 @@ func (m *TrainingManager) Stop(jobID string) error {
 	}
 	process.stopRequested = true
 	m.mu.Unlock()
-	if err := process.cmd.Process.Kill(); err != nil {
-		return fmt.Errorf("stop training job: %w", err)
+	if err := process.cmd.Process.Signal(os.Interrupt); err != nil {
+		if killErr := process.cmd.Process.Kill(); killErr != nil {
+			return fmt.Errorf("stop training job: %w", killErr)
+		}
+	} else {
+		timer := time.NewTimer(10 * time.Second)
+		select {
+		case <-process.done:
+			timer.Stop()
+			return nil
+		case <-timer.C:
+			if killErr := process.cmd.Process.Kill(); killErr != nil {
+				return fmt.Errorf("stop training job after interrupt: %w", killErr)
+			}
+		}
 	}
 	<-process.done
 	return nil

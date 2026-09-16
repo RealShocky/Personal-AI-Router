@@ -200,6 +200,29 @@ func TestTrainingManagerMapsContainerCheckpointPathToHostRoot(t *testing.T) {
 	}
 }
 
+func TestTrainingManagerReplacesTerminalExecutionForRecovery(t *testing.T) {
+	manager := NewTrainingManager(context.Background())
+	manager.command = func(ctx context.Context, path string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "go", "version")
+	}
+	request := TrainingRequest{JobID: "train-replace", ModelDigest: "sha256:model", TrainerPath: "train.py", ModelPath: "model", DatasetPath: "data", CheckpointDirectory: t.TempDir(), RendezvousEndpoint: "127.0.0.1:29400", Parallelism: TrainingDataParallel, ProcessesPerNode: 1, CheckpointIntervalSteps: 1, Nodes: []TrainingNode{{WorkerID: "cpu", Address: "127.0.0.1", Backend: "cpu"}}}
+	if _, err := manager.Start(request, 0); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		status, ok := manager.Status(request.JobID)
+		if ok && status.State == "complete" {
+			if _, err := manager.Start(request, 0); err != nil {
+				t.Fatalf("restart terminal execution: %v", err)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("training process did not complete")
+}
+
 func TestTrainingCoordinatorRollsBackPartialGroupLaunch(t *testing.T) {
 	request := TrainingRequest{
 		JobID:                   "train-group",
