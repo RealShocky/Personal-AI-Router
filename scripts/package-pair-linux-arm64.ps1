@@ -19,6 +19,10 @@ Copy-Item -LiteralPath (Join-Path $root 'docs\fabric-operations.mdx') -Destinati
 Copy-Item -LiteralPath (Join-Path $root 'docs\distributed-fabric.mdx') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'docs\README.md') -Destination (Join-Path $stage 'PAIR-documentation.md')
 @('PAIR headless Linux ARM64 bundle','Run ./nvpair-tui to start the broker and pairing UI over SSH.','Run install-fabric-worker.sh only after pairing; it installs the fabric worker as systemd.','This bundle contains no identities, certificates, private keys, SSH keys, or models.') | Set-Content (Join-Path $stage 'README.txt') -Encoding utf8
-wsl bash -lc "cd /mnt/p/airrouter/Personal-AI-Router/dist/pair-linux-arm64 && sha256sum * > SHA256SUMS"
+$hashes = Get-ChildItem -LiteralPath $stage -File | ForEach-Object {
+    $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$hash  $($_.Name)"
+}
+$hashes | Set-Content -LiteralPath (Join-Path $stage 'SHA256SUMS') -Encoding ascii
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
 Write-Host "Created $zip"
