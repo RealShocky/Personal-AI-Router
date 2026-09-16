@@ -157,4 +157,11 @@ func TestManagerBuildsVersionedExecutionPlanFromLiveWorkers(t *testing.T) {
 	if plan.Workers[0].MemoryBudgetBytes == 0 || plan.Workers[0].GPUVramBudgetBytes == 0 || plan.Workers[0].Endpoint == "" {
 		t.Fatalf("execution plan omitted live memory budgets: %+v", plan.Workers[0])
 	}
+	peerIDs := make(map[string]string, len(plan.Workers))
+	for _, worker := range plan.Workers {
+		peerIDs[worker.WorkerID] = worker.PeerID
+	}
+	if peerIDs["cuda-1"] != "n1" || peerIDs["cuda-2"] != "n2" {
+		t.Fatalf("execution plan omitted peer identities: %+v", plan.Workers)
+	}
 }

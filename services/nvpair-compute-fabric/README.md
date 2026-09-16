@@ -95,6 +95,13 @@ coordinator-side local raw-RPC relay, and the third starts the actual
 OpenAI-compatible llama.cpp server. The RPC server and relay are loopback/raw
 only; only PAIR's pinned mTLS endpoint crosses the network.
 
+When the server is launched through Windows `wsl.exe`, the service discovers
+the WSL default-route gateway and binds dynamic relays so the Linux child can
+reach them. Dynamic relays run their accept loop in the execution manager and
+pin the outgoing cluster certificate to the selected worker identity. Failed
+inference recovery is limited to three attempts; after that the job is marked
+failed and must be inspected or restarted by an operator.
+
 For several workers, use one process with
 `--rpc-relay-specs "127.0.0.1:51001|https://worker-a:14324/v1/fabric/rpc;127.0.0.1:51002|https://worker-b:14324/v1/fabric/rpc"`
 and pass both local relay addresses in `--llama-rpc`.

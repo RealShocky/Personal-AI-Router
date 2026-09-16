@@ -151,6 +151,7 @@ func (m *Manager) PlanGroup(request fabricwire.GroupRequest) (fabricwire.GroupPl
 		Runtime:   request.Runtime,
 		Epoch:     uint64(time.Now().UnixNano()),
 		Endpoints: make(map[string]string),
+		PeerIDs:   make(map[string]string),
 	}
 	for id, worker := range m.workers {
 		if worker.State != fabricwire.WorkerReady || !runtimeMatches(request.Runtime, worker.Heartbeat) {
@@ -184,6 +185,9 @@ func (m *Manager) PlanGroup(request fabricwire.GroupRequest) (fabricwire.GroupPl
 		if worker.Heartbeat.Endpoint != "" {
 			plan.Endpoints[id] = worker.Heartbeat.Endpoint
 		}
+		if worker.Heartbeat.NodeID != "" {
+			plan.PeerIDs[id] = worker.Heartbeat.NodeID
+		}
 		if uint32(len(plan.Workers)) == request.WorkerGoal {
 			return plan, nil
 		}
@@ -216,6 +220,7 @@ func (m *Manager) BuildExecutionPlan(request fabricwire.GroupRequest, group fabr
 		}
 		plan.Workers = append(plan.Workers, fabricwire.WorkerAssignment{
 			WorkerID:           workerID,
+			PeerID:             worker.Heartbeat.NodeID,
 			Endpoint:           group.Endpoints[workerID],
 			ShardIndex:         uint32(index),
 			MemoryBudgetBytes:  worker.Heartbeat.MemoryFree,

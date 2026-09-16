@@ -52,8 +52,10 @@ When llama.cpp runs inside WSL2 but the RPC worker is on another machine, bind
 the Windows relay to an address reachable from WSL2, such as `0.0.0.0:51006`,
 and connect to the Windows host address from WSL2. A relay bound only to
 `127.0.0.1` is for Windows-local clients and is not reliably reachable from
-WSL2. Keep the relay on a trusted/private interface and never expose the raw
-RPC service directly.
+WSL2. PAIR's coordinator-launched WSL path performs this automatically: it
+discovers the WSL default-route gateway, binds the relay on a private
+wildcard listener, and gives the WSL child the gateway address. Keep the relay
+on a trusted/private interface and never expose the raw RPC service directly.
 
 ```powershell
 nvpair-compute-fabric.exe --daemon `
@@ -105,6 +107,14 @@ JSON request body to `/slots/<slot>?action=save` or `restore`.
 The model path is local to the coordinator because llama.cpp streams the
 selected tensors to RPC workers; workers do not need a second copy for this
 inference path. Training has separate per-node path requirements.
+
+The RPC connection is a live byte stream, not a REST request. A successful
+heartbeat or `rpcSupport:true` means that the worker's local RPC port answered
+a probe; it does not prove that a model can finish loading. The execution
+manager now runs an accept loop for every dynamic relay, pins each relay's
+client certificate to the selected worker identity, and stops automatic
+inference recovery after three failed attempts. A failed load therefore
+becomes a visible failed job instead of an unbounded restart chain.
 
 The inference group is requested as `llama.cpp` and filtered by backend (such
 as `cuda`). A worker may therefore advertise `runtime: cuda` while still being

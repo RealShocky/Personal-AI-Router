@@ -20,6 +20,7 @@ type JobRecord struct {
 	Epoch       uint64                `json:"epoch"`
 	Checkpoint  fabricwire.Checkpoint `json:"checkpoint"`
 	State       string                `json:"state"`
+	RecoveryAttempts uint32            `json:"recoveryAttempts"`
 }
 
 type JobStore struct {
@@ -90,6 +91,23 @@ func (s *JobStore) Recover(jobID, groupID string, epoch uint64) (fabricwire.Chec
 		return fabricwire.Checkpoint{}, err
 	}
 	return job.Checkpoint, nil
+}
+
+func (s *JobStore) BeginRecovery(jobID string, limit uint32) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job, ok := s.jobs[jobID]
+	if !ok {
+		return false, fmt.Errorf("job not found")
+	}
+	if limit == 0 || job.RecoveryAttempts >= limit {
+		job.State = "failed"
+		s.jobs[jobID] = job
+		return false, s.persistLocked()
+	}
+	job.RecoveryAttempts++
+	s.jobs[jobID] = job
+	return true, s.persistLocked()
 }
 
 func (s *JobStore) Job(jobID string) (JobRecord, bool) {

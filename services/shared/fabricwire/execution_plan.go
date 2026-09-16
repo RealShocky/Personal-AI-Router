@@ -22,6 +22,7 @@ const (
 
 type WorkerAssignment struct {
 	WorkerID           string `json:"workerId"`
+	PeerID             string `json:"peerId,omitempty"`
 	Endpoint           string `json:"endpoint,omitempty"`
 	ShardIndex         uint32 `json:"shardIndex"`
 	MemoryBudgetBytes  uint64 `json:"memoryBudgetBytes"`

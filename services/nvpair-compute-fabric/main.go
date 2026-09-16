@@ -59,9 +59,13 @@ func main() {
 	nodeID := flag.String("node-id", "", "stable host identity for worker mode")
 	runtimeName := flag.String("runtime", "cpu", "worker runtime label: cpu, cuda, or metal")
 	backend := flag.String("backend", "cpu", "comma-separated worker backends")
+	logLevel := flag.String("log-level", "info", "shared service log level: debug, info, warn, or error")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	daemon := flag.Bool("daemon", false, "run without a JSON-RPC stdin session")
 	flag.Parse()
+	if !validLogLevel(*logLevel) {
+		log.Fatalf("unsupported log level %q", *logLevel)
+	}
 	if *showVersion {
 		fmt.Println(Version)
 		return
@@ -167,6 +171,15 @@ func main() {
 			continue
 		}
 		handleMessage(codec, mgr, jobs, executions, trainingCoordinator, cancel, msg)
+	}
+}
+
+func validLogLevel(level string) bool {
+	switch strings.ToLower(level) {
+	case "debug", "info", "warn", "error":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -729,21 +742,25 @@ func childEnvironment(executable string) []string {
 }
 
 func serveRPCRelay(ctx context.Context, listenAddr, remoteURL, clusterDir, peerID string) {
-	relay, err := openRPCRelay(ctx, listenAddr, remoteURL, clusterDir)
+	relay, err := openRPCRelayForClient(ctx, listenAddr, remoteURL, clusterDir, "", peerID)
 	if err != nil {
 		log.Printf("RPC relay listen failed: %v", err)
 		return
 	}
 	defer relay.Close()
+	relay.serve(ctx)
+}
+
+func (r *rpcRelay) serve(ctx context.Context) {
 	for {
-		conn, err := relay.listener.Accept()
+		conn, err := r.listener.Accept()
 		if err != nil {
 			if ctx.Err() == nil {
 				log.Printf("RPC relay accept failed: %v", err)
 			}
 			return
 		}
-		go relayRPCConnection(ctx, conn, relay.remoteURL, relay.clusterDir, peerID)
+		go relayRPCConnection(ctx, conn, r.remoteURL, r.clusterDir, r.peerID)
 	}
 }
 
@@ -751,14 +768,20 @@ type rpcRelay struct {
 	listener   net.Listener
 	remoteURL  string
 	clusterDir string
+	clientHost string
+	peerID     string
 }
 
 func openRPCRelay(ctx context.Context, listenAddr, remoteURL, clusterDir string) (*rpcRelay, error) {
+	return openRPCRelayForClient(ctx, listenAddr, remoteURL, clusterDir, "", "")
+}
+
+func openRPCRelayForClient(ctx context.Context, listenAddr, remoteURL, clusterDir, clientHost, peerID string) (*rpcRelay, error) {
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return nil, err
 	}
-	relay := &rpcRelay{listener: listener, remoteURL: remoteURL, clusterDir: clusterDir}
+	relay := &rpcRelay{listener: listener, remoteURL: remoteURL, clusterDir: clusterDir, clientHost: clientHost, peerID: peerID}
 	go func() {
 		<-ctx.Done()
 		_ = relay.Close()
@@ -767,7 +790,15 @@ func openRPCRelay(ctx context.Context, listenAddr, remoteURL, clusterDir string)
 }
 
 func (r *rpcRelay) Addr() string {
-	return r.listener.Addr().String()
+	address := r.listener.Addr().String()
+	if r.clientHost == "" {
+		return address
+	}
+	_, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return address
+	}
+	return net.JoinHostPort(r.clientHost, port)
 }
 
 func (r *rpcRelay) Close() error {

@@ -83,6 +83,7 @@ type GroupPlan struct {
 	Runtime   string            `json:"runtime"`
 	Workers   []string          `json:"workers"`
 	Endpoints map[string]string `json:"endpoints,omitempty"`
+	PeerIDs   map[string]string `json:"peerIds,omitempty"`
 	Epoch     uint64            `json:"epoch"`
 }
 

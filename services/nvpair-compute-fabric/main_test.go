@@ -49,3 +49,14 @@ func TestRPCTargetAvailableReflectsReachability(t *testing.T) {
 		t.Fatal("closed RPC target was reported available")
 	}
 }
+
+func TestFabricAcceptsSharedLogLevelValues(t *testing.T) {
+	for _, level := range []string{"debug", "info", "warn", "error"} {
+		if !validLogLevel(level) {
+			t.Fatalf("log level %q was rejected", level)
+		}
+	}
+	if validLogLevel("verbose") {
+		t.Fatal("unsupported log level was accepted")
+	}
+}

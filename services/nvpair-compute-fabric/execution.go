@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -60,6 +62,8 @@ type runningExecution struct {
 	stopRequested bool
 }
 
+const maxInferenceRecoveryAttempts uint32 = 3
+
 func NewExecutionManager(ctx context.Context, clusterDir string) *ExecutionManager {
 	return &ExecutionManager{ctx: ctx, cluster: clusterDir, executions: make(map[string]*runningExecution), command: exec.CommandContext}
 }
@@ -86,11 +90,15 @@ func (m *ExecutionManager) StartWithExecutionPlan(request StartRequest, executio
 		Epoch:     executionPlan.Epoch,
 		Workers:   make([]string, 0, len(executionPlan.Workers)),
 		Endpoints: make(map[string]string),
+		PeerIDs:   make(map[string]string),
 	}
 	for _, assignment := range executionPlan.Workers {
 		group.Workers = append(group.Workers, assignment.WorkerID)
 		if assignment.Endpoint != "" {
 			group.Endpoints[assignment.WorkerID] = assignment.Endpoint
+		}
+		if assignment.PeerID != "" {
+			group.PeerIDs[assignment.WorkerID] = assignment.PeerID
 		}
 	}
 	request.Group.GroupID = group.GroupID
@@ -125,16 +133,29 @@ func (m *ExecutionManager) Start(request StartRequest, plan fabricwire.GroupPlan
 
 	relays := make([]*rpcRelay, 0, len(plan.Endpoints))
 	rpcAddresses := make([]string, 0, len(plan.Endpoints))
+	clientHost := ""
+	if runtime.GOOS == "windows" && isWSLLauncher(request.ServerPath) && len(plan.Endpoints) > 0 {
+		var err error
+		clientHost, err = resolveWSLHostGateway(m.ctx, request.ServerPath, request.ServerPrefixArgs)
+		if err != nil {
+			return Execution{}, fmt.Errorf("resolve WSL host gateway: %w", err)
+		}
+	}
+	listenAddr := "127.0.0.1:0"
+	if clientHost != "" {
+		listenAddr = "0.0.0.0:0"
+	}
 	for _, workerID := range plan.Workers {
 		endpoint := plan.Endpoints[workerID]
 		if endpoint == "" {
 			continue
 		}
-		relay, err := openRPCRelay(m.ctx, "127.0.0.1:0", endpoint, m.cluster)
+		relay, err := openRPCRelayForClient(m.ctx, listenAddr, endpoint, m.cluster, clientHost, plan.PeerIDs[workerID])
 		if err != nil {
 			closeRelays(relays)
 			return Execution{}, fmt.Errorf("open relay for %s: %w", workerID, err)
 		}
+		go relay.serve(m.ctx)
 		relays = append(relays, relay)
 		rpcAddresses = append(rpcAddresses, relay.Addr())
 	}
@@ -167,6 +188,41 @@ func (m *ExecutionManager) Start(request StartRequest, plan fabricwire.GroupPlan
 		go restoreSlotCheckpoint(m.ctx, request.HTTPPort, request.CheckpointSlot, request.CheckpointFile)
 	}
 	return execution, nil
+}
+
+func isWSLLauncher(path string) bool {
+	return strings.EqualFold(filepath.Base(path), "wsl.exe")
+}
+
+func resolveWSLHostGateway(ctx context.Context, serverPath string, prefixArgs []string) (string, error) {
+	args := make([]string, 0, 5)
+	for index := 0; index+1 < len(prefixArgs); index++ {
+		if prefixArgs[index] != "-d" && prefixArgs[index] != "--distribution" {
+			continue
+		}
+		args = append(args, prefixArgs[index], prefixArgs[index+1])
+		break
+	}
+	args = append(args, "--", "ip", "route", "show", "default")
+	output, err := exec.CommandContext(ctx, serverPath, args...).Output()
+	if err != nil {
+		return "", err
+	}
+	return parseWSLHostGateway(string(output))
+}
+
+func parseWSLHostGateway(output string) (string, error) {
+	fields := strings.Fields(output)
+	for index := 0; index+1 < len(fields); index++ {
+		if fields[index] != "via" {
+			continue
+		}
+		gateway := net.ParseIP(fields[index+1])
+		if gateway != nil {
+			return gateway.String(), nil
+		}
+	}
+	return "", fmt.Errorf("default route gateway not found")
 }
 
 func ensureSlotSavePath(serverPath string, prefixArgs []string, slotPath string) error {
@@ -303,6 +359,14 @@ func (m *ExecutionManager) RecoverFailed(manager *Manager, jobs *JobStore) {
 		group.GroupID = fmt.Sprintf("%s-recovery-%d", group.GroupID, running.plan.Epoch)
 		plan, err := manager.PlanGroup(group)
 		if err != nil {
+			continue
+		}
+		allowed, err := jobs.BeginRecovery(running.execution.JobID, maxInferenceRecoveryAttempts)
+		if err != nil {
+			continue
+		}
+		if !allowed {
+			running.execution.State = "failed"
 			continue
 		}
 		m.mu.Lock()

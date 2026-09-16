@@ -107,6 +107,7 @@
 | Method | Direction | In bridge? |
 |---|---|---|
 | `ready` | notification (we consume) | ✅ yes |
+| `error` | request (we call) | ✅ yes |
 | `fabric:build-execution-plan` | request (we call) | ⚠️ not called |
 | `fabric:build-training-command` | request (we call) | ⚠️ not called |
 | `fabric:checkpoint` | request (we call) | ⚠️ not called |

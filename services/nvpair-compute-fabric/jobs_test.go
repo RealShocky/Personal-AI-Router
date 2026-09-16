@@ -34,3 +34,27 @@ func TestJobStoreRejectsStaleCheckpointAndRecoversFromLastStage(t *testing.T) {
 		t.Fatal("checkpointed job was not persisted")
 	}
 }
+
+func TestJobStoreStopsRecoveryAfterThreeAttempts(t *testing.T) {
+	store := NewJobStore("")
+	if err := store.Submit(JobRecord{JobID: "job-recovery", GroupID: "group-1", Epoch: 1}); err != nil {
+		t.Fatal(err)
+	}
+	for attempt := uint32(1); attempt <= 3; attempt++ {
+		allowed, err := store.BeginRecovery("job-recovery", 3)
+		if err != nil || !allowed {
+			t.Fatalf("attempt %d: allowed=%v err=%v", attempt, allowed, err)
+		}
+	}
+	allowed, err := store.BeginRecovery("job-recovery", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if allowed {
+		t.Fatal("fourth recovery attempt was allowed")
+	}
+	job, ok := store.Job("job-recovery")
+	if !ok || job.State != "failed" || job.RecoveryAttempts != 3 {
+		t.Fatalf("job = %+v, want failed after three attempts", job)
+	}
+}

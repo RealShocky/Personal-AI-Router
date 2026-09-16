@@ -92,6 +92,29 @@ func TestExecutionManagerCreatesOneRelayPerAdvertisedWorker(t *testing.T) {
 	}
 }
 
+func TestParseWSLHostGateway(t *testing.T) {
+	got, err := parseWSLHostGateway("default via 172.31.176.1 dev eth0 proto kernel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "172.31.176.1" {
+		t.Fatalf("gateway = %q, want 172.31.176.1", got)
+	}
+}
+
+func TestRPCRelayAddressUsesWSLReachableHost(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	relay, err := openRPCRelayForClient(ctx, "127.0.0.1:0", "https://worker.invalid/v1/fabric/rpc", "missing-cluster", "172.31.176.1", "worker-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer relay.Close()
+	if !strings.HasPrefix(relay.Addr(), "172.31.176.1:") {
+		t.Fatalf("relay address = %q, want WSL host gateway", relay.Addr())
+	}
+}
+
 func TestExecutionManagerRejectsInvalidExecutionPlanBeforeLaunch(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -291,5 +314,42 @@ func TestExecutionManagerAutomaticallyRecoversFailedJobIntoFreshGroupEpoch(t *te
 	job, ok := jobs.Job("j1")
 	if !ok || job.Epoch == 10 || job.GroupID == "g1" || starts < 2 {
 		t.Fatalf("job=%+v starts=%d", job, starts)
+	}
+}
+
+func TestExecutionManagerDoesNotRecoverAfterAttemptLimit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager := NewManager(time.Second)
+	manager.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "w1", NodeID: "n1", State: fabricwire.WorkerReady, Epoch: 1, Runtime: "llama.cpp", Backends: []string{"cpu"}}, time.Now())
+	executions := NewExecutionManager(ctx, "")
+	starts := 0
+	executions.command = func(ctx context.Context, path string, args ...string) *exec.Cmd {
+		starts++
+		return exec.CommandContext(ctx, "go", "version")
+	}
+	plan := fabricwire.GroupPlan{GroupID: "g1", Runtime: "llama.cpp", Workers: []string{"w1"}, Epoch: 10}
+	jobs := NewJobStore("")
+	if err := jobs.Submit(JobRecord{JobID: "j-limit", GroupID: "g1", Epoch: 10, RecoveryAttempts: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := executions.Start(StartRequest{JobID: "j-limit", ServerPath: "llama-server", ModelPath: "model.gguf", HTTPPort: 11450, Group: fabricwire.GroupRequest{GroupID: "g1", Runtime: "llama.cpp", Backends: []string{"cpu"}, WorkerGoal: 1}}, plan); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		status, ok := executions.Status("j-limit")
+		if ok && status.State == "failed" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	executions.RecoverFailed(manager, jobs)
+	if starts != 1 {
+		t.Fatalf("starts = %d, want no recovery restart", starts)
+	}
+	job, ok := jobs.Job("j-limit")
+	if !ok || job.State != "failed" {
+		t.Fatalf("job = %+v, want failed", job)
 	}
 }
