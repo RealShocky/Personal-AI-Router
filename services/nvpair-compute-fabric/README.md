@@ -206,6 +206,14 @@ destination digest. The coordinator verifies the digest before publishing the
 new owner; this endpoint carries control metadata and never accepts a raw
 provider pointer.
 
+The binary page channel is the authenticated `POST /v1/fabric/logical-page`
+endpoint. The sender supplies `X-PAIR-Page-ID`, `X-PAIR-Page-Bytes`, and
+`X-PAIR-Page-Digest` headers with an `application/octet-stream` body. The peer
+streams into its local page store, verifies the exact size and SHA-256 digest,
+atomically publishes the page, and returns bounded JSON metadata. `GET` on the
+same endpoint retrieves a verified page by `pageId`; both methods require the
+existing pinned cluster mTLS identity.
+
 ## Test
 
 ```bash

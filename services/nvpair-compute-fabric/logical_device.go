@@ -4,7 +4,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -227,6 +229,46 @@ func (m *LogicalDeviceManager) CompleteTransfer(transferID, digest string) (fabr
 	m.requests[plan.PlanID] = plan
 	m.transfers[transferID] = transfer
 	return transfer, nil
+}
+
+func (m *LogicalDeviceManager) FailTransfer(transferID string, reason error) (fabricwire.TransferStatus, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	transfer, ok := m.transfers[transferID]
+	if !ok {
+		return fabricwire.TransferStatus{}, fmt.Errorf("transfer %q not found", transferID)
+	}
+	if transfer.State != fabricwire.TransferQueued {
+		return transfer, fmt.Errorf("transfer %q is not queued", transferID)
+	}
+	if !fabricwire.CanTransitionTransfer(transfer.State, fabricwire.TransferFailed) {
+		return transfer, fmt.Errorf("transfer %q cannot fail from state %q", transferID, transfer.State)
+	}
+	transfer.State = fabricwire.TransferFailed
+	if reason != nil {
+		transfer.Error = reason.Error()
+	}
+	m.transfers[transferID] = transfer
+	return transfer, nil
+}
+
+func (m *LogicalDeviceManager) TransferPage(ctx context.Context, client *http.Client, source *PageStore, request fabricwire.TransferRequest) (fabricwire.TransferStatus, error) {
+	transfer, err := m.Transfer(request)
+	if err != nil {
+		return fabricwire.TransferStatus{}, err
+	}
+	worker, ok := m.workers.Worker(transfer.TargetWorkerID)
+	if !ok || worker.Heartbeat.Endpoint == "" {
+		reason := fmt.Errorf("target worker %q has no transfer endpoint", transfer.TargetWorkerID)
+		failed, _ := m.FailTransfer(transfer.TransferID, reason)
+		return failed, reason
+	}
+	metadata, err := sendPage(ctx, client, source, worker.Heartbeat.Endpoint, transfer.PageID)
+	if err != nil {
+		failed, _ := m.FailTransfer(transfer.TransferID, err)
+		return failed, err
+	}
+	return m.CompleteTransfer(transfer.TransferID, metadata.Digest)
 }
 
 func (m *LogicalDeviceManager) Plan(request fabricwire.LogicalDevicePlanRequest) (fabricwire.LogicalDevicePlan, error) {

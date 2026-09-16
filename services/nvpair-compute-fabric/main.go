@@ -23,6 +23,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -498,7 +499,7 @@ func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Mana
 	server := &http.Server{
 		Addr:      fmt.Sprintf("0.0.0.0:%d", port),
 		TLSConfig: config,
-		Handler:   fabricHTTPHandlerWithCoordinator(mesh, mgr, rpcTarget, training, coordinator, jobs, executions),
+		Handler:   fabricHTTPHandlerWithCoordinator(mesh, mgr, rpcTarget, training, coordinator, jobs, executions, newLogicalPageStore(clusterDir)),
 	}
 	listener, err := net.Listen("tcp", server.Addr)
 	if err != nil {
@@ -519,6 +520,15 @@ func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Mana
 	}
 }
 
+func newLogicalPageStore(clusterDir string) *PageStore {
+	store, err := NewPageStore(filepath.Join(clusterDir, "logical-pages"), 256<<20)
+	if err != nil {
+		log.Printf("logical page store unavailable: %v", err)
+		return nil
+	}
+	return store
+}
+
 func fabricHTTPHandler(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string) http.Handler {
 	return fabricHTTPHandlerWithExecution(mesh, mgr, rpcTarget, nil, nil, nil)
 }
@@ -531,8 +541,12 @@ func fabricHTTPHandlerWithExecution(mesh *clustertrust.Mesh, mgr *Manager, rpcTa
 	return fabricHTTPHandlerWithCoordinator(mesh, mgr, rpcTarget, training, nil, jobs, executions)
 }
 
-func fabricHTTPHandlerWithCoordinator(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string, training *TrainingManager, coordinator *TrainingCoordinator, jobs *JobStore, executions *ExecutionManager) http.Handler {
+func fabricHTTPHandlerWithCoordinator(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string, training *TrainingManager, coordinator *TrainingCoordinator, jobs *JobStore, executions *ExecutionManager, pageStores ...*PageStore) http.Handler {
 	mux := http.NewServeMux()
+	var pageStore *PageStore
+	if len(pageStores) > 0 {
+		pageStore = pageStores[0]
+	}
 	mux.HandleFunc("/v1/fabric/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -544,6 +558,49 @@ func fabricHTTPHandlerWithCoordinator(mesh *clustertrust.Mesh, mgr *Manager, rpc
 		}
 		writeJSON(w, map[string]any{"workers": mgr.Workers(), "capacity": mgr.Capacity()})
 	})
+	if pageStore != nil {
+		mux.HandleFunc("/v1/fabric/logical-page", func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := mesh.VerifyClientPin(r); !ok {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			switch r.Method {
+			case http.MethodPost:
+				pageID := r.Header.Get("X-PAIR-Page-ID")
+				digest := r.Header.Get("X-PAIR-Page-Digest")
+				sizeText := r.Header.Get("X-PAIR-Page-Bytes")
+				if sizeText == "" && r.ContentLength >= 0 {
+					sizeText = strconv.FormatInt(r.ContentLength, 10)
+				}
+				size, err := strconv.ParseUint(sizeText, 10, 64)
+				if err != nil {
+					http.Error(w, "invalid logical page size", http.StatusBadRequest)
+					return
+				}
+				metadata, err := pageStore.Put(r.Context(), pageID, size, digest, r.Body)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				writeJSON(w, metadata)
+			case http.MethodGet:
+				pageID := r.URL.Query().Get("pageId")
+				reader, metadata, err := pageStore.Open(r.Context(), pageID)
+				if err != nil {
+					http.Error(w, "logical page not found", http.StatusNotFound)
+					return
+				}
+				defer reader.Close()
+				w.Header().Set("Content-Type", "application/octet-stream")
+				w.Header().Set("X-PAIR-Page-ID", metadata.PageID)
+				w.Header().Set("X-PAIR-Page-Bytes", strconv.FormatUint(metadata.Bytes, 10))
+				w.Header().Set("X-PAIR-Page-Digest", metadata.Digest)
+				_, _ = io.Copy(w, reader)
+			default:
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			}
+		})
+	}
 	if jobs != nil && executions != nil {
 		mux.HandleFunc("/v1/fabric/inference/start", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {

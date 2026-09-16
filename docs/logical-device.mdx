@@ -84,6 +84,12 @@ The provider acknowledgment method is
 destination digest. The coordinator publishes the destination as owner only
 after that digest matches the admitted transfer.
 
+The binary data path is the existing worker mTLS listener at
+`/v1/fabric/logical-page`. It streams page bytes with explicit size and digest
+headers into a bounded, atomic local page store. This is a PAIR data channel,
+not shared CUDA address space; CUDA/Metal adapters may optimize local copies,
+but ownership is published only after peer metadata verifies the bytes.
+
 Provider-level tensor execution and the binary data channel are still the next
 runtime phase. Until those are implemented and benchmarked, a queued transfer
 is control-plane state rather than proof that tensor bytes moved, and aggregate
