@@ -104,6 +104,14 @@ the fabric executable, an installer/launcher, this documentation, and a SHA256
 manifest. Archives intentionally exclude certificates, private keys, cluster
 state, SSH keys, and models.
 
+On Windows, `package-fabric-windows.ps1` uses the staged service binary by
+default. To package a freshly built portable binary from another output
+directory, pass it explicitly with `-Binary`.
+
+```powershell
+.\scripts\package-fabric-windows.ps1 -Binary .\desktop\cli-bin\nvpair-compute-fabric.exe
+```
+
 ### Windows
 
 Extract `fabric-windows-x64.zip`, set these values in a PowerShell session, and

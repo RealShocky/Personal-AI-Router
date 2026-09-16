@@ -4,18 +4,21 @@ SPDX-License-Identifier: Apache-2.0
 #>
 
 [CmdletBinding()]
-param([string]$OutputDir)
+param(
+    [string]$OutputDir,
+    [string]$Binary
+)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($OutputDir)) { $OutputDir = Join-Path $root 'dist' }
-$binary = Join-Path $root 'services\build\bin\nvpair-compute-fabric.exe'
-if (-not (Test-Path -LiteralPath $binary)) { throw "Build first: $binary" }
+if ([string]::IsNullOrWhiteSpace($Binary)) { $Binary = Join-Path $root 'services\build\bin\nvpair-compute-fabric.exe' }
+if (-not (Test-Path -LiteralPath $Binary)) { throw "Build first or provide -Binary: $Binary" }
 $stage = Join-Path $OutputDir 'fabric-windows-x64'
 $zip = Join-Path $OutputDir 'fabric-windows-x64.zip'
 Remove-Item -LiteralPath $stage -Force -Recurse -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
-Copy-Item $binary (Join-Path $stage 'nvpair-compute-fabric.exe')
+Copy-Item $Binary (Join-Path $stage 'nvpair-compute-fabric.exe')
 Copy-Item (Join-Path $PSScriptRoot 'run-fabric-worker.ps1') $stage
 Copy-Item (Join-Path $PSScriptRoot 'install-fabric-worker-windows.ps1') $stage
 Copy-Item (Join-Path $root 'docs\distributed-fabric.mdx') (Join-Path $stage 'distributed-fabric.mdx')
