@@ -18,9 +18,12 @@ currently trusted cluster member. A node can also run this binary in worker
 mode with `--coordinator-url`, `--worker-id`, `--node-id`, `--advertise-url`, and `--cluster-dir`;
 it sends heartbeats and performs a fresh-epoch rejoin after quarantine.
 
-When `nvidia-smi` is available, worker heartbeats also report aggregate NVIDIA
-GPU count and free/total VRAM. These are telemetry and scheduling hints; they
-do not combine physical adapters into one operating-system device.
+When `nvidia-smi` exposes memory accounting, worker heartbeats also report
+aggregate NVIDIA GPU count and free/total VRAM. If the device is visible but
+memory is `Not Supported`, PAIR still counts the GPU and leaves VRAM unknown;
+that worker cannot satisfy a minimum-VRAM placement constraint. These are
+telemetry and scheduling hints; they do not combine physical adapters into one
+operating-system device.
 
 When the fabric process runs outside the broker, pass `--daemon`. This keeps
 the HTTP worker, relay, and child-process supervisors alive without requiring a

@@ -46,17 +46,34 @@ func parseNvidiaMemory(output string) (gpuMemorySnapshot, bool) {
 	return snapshot, snapshot.Count > 0
 }
 
+func parseNvidiaDeviceCount(output string) uint32 {
+	var count uint32
+	for _, line := range strings.Split(output, "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count
+}
+
 func readGPUMemory() gpuMemorySnapshot {
 	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 	defer cancel()
 	for _, command := range nvidiaSMICommandCandidates() {
 		output, err := exec.CommandContext(ctx, command, "--query-gpu=memory.used,memory.total,memory.free", "--format=csv,noheader,nounits").Output()
-		if err != nil {
-			continue
+		if err == nil {
+			if snapshot, ok := parseNvidiaMemory(string(output)); ok {
+				return snapshot
+			}
 		}
-		snapshot, ok := parseNvidiaMemory(string(output))
-		if ok {
-			return snapshot
+		// Some newer NVIDIA platforms expose the device but intentionally do not
+		// expose memory accounting. Keep the device usable for capability and
+		// scheduling decisions while leaving VRAM budgets at zero (unknown).
+		devices, deviceErr := exec.CommandContext(ctx, command, "--query-gpu=name", "--format=csv,noheader").Output()
+		if deviceErr == nil {
+			if count := parseNvidiaDeviceCount(string(devices)); count > 0 {
+				return gpuMemorySnapshot{Count: count}
+			}
 		}
 	}
 	return gpuMemorySnapshot{}

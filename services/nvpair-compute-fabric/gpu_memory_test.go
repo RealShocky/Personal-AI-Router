@@ -21,6 +21,15 @@ func TestParseNvidiaMemoryRejectsMalformedRows(t *testing.T) {
 	}
 }
 
+func TestParseNvidiaDeviceCountSupportsUnavailableMemoryTelemetry(t *testing.T) {
+	if got := parseNvidiaDeviceCount("NVIDIA GB10\n"); got != 1 {
+		t.Fatalf("device count = %d, want 1", got)
+	}
+	if got := parseNvidiaDeviceCount("NVIDIA GB10\nNVIDIA RTX 5060\n"); got != 2 {
+		t.Fatalf("device count = %d, want 2", got)
+	}
+}
+
 func TestNvidiaSMICommandCandidatesIncludeWSLShim(t *testing.T) {
 	candidates := nvidiaSMICommandCandidates()
 	found := false
