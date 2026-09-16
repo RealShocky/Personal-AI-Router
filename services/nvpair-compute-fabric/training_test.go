@@ -4,8 +4,11 @@
 package main
 
 import (
+	"context"
+	"os/exec"
 	"reflect"
 	"testing"
+	"time"
 
 	"nvpair-shared/fabricwire"
 )
@@ -39,16 +42,17 @@ func TestTorchRunTrainingCommandUsesRendezvousAndRank(t *testing.T) {
 
 func TestTrainingAdmissionRejectsMetalForTorchRun(t *testing.T) {
 	request := TrainingRequest{
-		JobID:               "train-metal",
-		ModelDigest:         "sha256:model",
-		TrainerPath:         "train.py",
-		ModelPath:           "model.safetensors",
-		DatasetPath:         "data.jsonl",
-		CheckpointDirectory: "checkpoints",
-		RendezvousEndpoint:  "10.0.0.1:29400",
-		Parallelism:         TrainingFSDP,
-		ProcessesPerNode:    1,
-		Nodes:               []TrainingNode{{WorkerID: "mac", Address: "10.0.0.4", Backend: "metal"}},
+		JobID:                   "train-metal",
+		ModelDigest:             "sha256:model",
+		TrainerPath:             "train.py",
+		ModelPath:               "model.safetensors",
+		DatasetPath:             "data.jsonl",
+		CheckpointDirectory:     "checkpoints",
+		RendezvousEndpoint:      "10.0.0.1:29400",
+		Parallelism:             TrainingFSDP,
+		ProcessesPerNode:        1,
+		CheckpointIntervalSteps: 100,
+		Nodes:                   []TrainingNode{{WorkerID: "mac", Address: "10.0.0.4", Backend: "metal"}},
 	}
 	if _, err := BuildTorchRunCommand(request, 0); err == nil {
 		t.Fatal("Metal training was accepted by the CUDA/CPU torchrun adapter")
@@ -75,4 +79,44 @@ func TestTrainingRequestMapsToFabricCapabilities(t *testing.T) {
 	if request.Backend() != fabricwire.TransportLocal {
 		t.Fatalf("training backend transport = %q, want local", request.Backend())
 	}
+}
+
+func TestTrainingManagerSupervisesLocalTorchRunProcess(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager := NewTrainingManager(ctx)
+	var got []string
+	manager.command = func(ctx context.Context, path string, args ...string) *exec.Cmd {
+		got = append([]string{path}, args...)
+		return exec.CommandContext(ctx, "go", "version")
+	}
+	request := TrainingRequest{
+		JobID:                   "train-local",
+		ModelDigest:             "sha256:model",
+		TrainerPath:             "train.py",
+		ModelPath:               "model.safetensors",
+		DatasetPath:             "data.jsonl",
+		CheckpointDirectory:     "checkpoints",
+		RendezvousEndpoint:      "127.0.0.1:29400",
+		Parallelism:             TrainingDataParallel,
+		ProcessesPerNode:        1,
+		CheckpointIntervalSteps: 10,
+		Nodes:                   []TrainingNode{{WorkerID: "cpu", Address: "127.0.0.1", Backend: "cpu"}},
+	}
+	started, err := manager.Start(request, 0)
+	if err != nil {
+		t.Fatalf("start training: %v", err)
+	}
+	if started.JobID != request.JobID || started.PID == 0 || len(got) == 0 || got[0] != "torchrun" {
+		t.Fatalf("execution = %+v command = %#v", started, got)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		status, ok := manager.Status(request.JobID)
+		if ok && status.State == "failed" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("training process did not reach terminal state: %+v", started)
 }

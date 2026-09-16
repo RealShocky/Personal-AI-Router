@@ -82,12 +82,13 @@ func main() {
 	mgr := NewManager(*timeout)
 	jobs := NewJobStore(*stateDir)
 	executions := NewExecutionManager(ctx, *clusterDir)
+	training := NewTrainingManager(ctx)
 	codec := NewCodec(transport)
 	if *httpPort != 0 {
 		if *clusterDir == "" {
 			log.Printf("fabric HTTP endpoint disabled: no cluster directory")
 		} else {
-			go serveFabricHTTP(ctx, *httpPort, *clusterDir, mgr, *rpcTarget)
+			go serveFabricHTTP(ctx, *httpPort, *clusterDir, mgr, *rpcTarget, training)
 		}
 	}
 	if *rpcServerPath != "" {
@@ -300,14 +301,14 @@ func postFabricRejoin(ctx context.Context, client *http.Client, endpoint, worker
 	return json.NewDecoder(resp.Body).Decode(&result) == nil && result.Rejoined
 }
 
-func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Manager, rpcTarget string) {
+func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Manager, rpcTarget string, training *TrainingManager) {
 	mesh := clustertrust.Open(clusterDir)
 	go mesh.Watch(ctx, nil)
 	config := mesh.ServerTLSConfig()
 	server := &http.Server{
 		Addr:      fmt.Sprintf("0.0.0.0:%d", port),
 		TLSConfig: config,
-		Handler:   fabricHTTPHandler(mesh, mgr, rpcTarget),
+		Handler:   fabricHTTPHandlerWithTraining(mesh, mgr, rpcTarget, training),
 	}
 	listener, err := net.Listen("tcp", server.Addr)
 	if err != nil {
@@ -329,6 +330,10 @@ func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Mana
 }
 
 func fabricHTTPHandler(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string) http.Handler {
+	return fabricHTTPHandlerWithTraining(mesh, mgr, rpcTarget, nil)
+}
+
+func fabricHTTPHandlerWithTraining(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string, training *TrainingManager) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/fabric/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -413,6 +418,65 @@ func fabricHTTPHandler(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string) 
 		}
 		writeJSON(w, map[string]bool{"rejoined": mgr.Rejoin(params.WorkerID, params.Epoch, time.Now())})
 	})
+	if training != nil {
+		mux.HandleFunc("/v1/fabric/training/start", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if _, ok := mesh.VerifyClientPin(r); !ok {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			var params struct {
+				Request  TrainingRequest `json:"request"`
+				NodeRank uint32          `json:"nodeRank"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+				http.Error(w, "invalid training request", http.StatusBadRequest)
+				return
+			}
+			execution, err := training.Start(params.Request, params.NodeRank)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, execution)
+		})
+		mux.HandleFunc("/v1/fabric/training/status", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if _, ok := mesh.VerifyClientPin(r); !ok {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			jobID := r.URL.Query().Get("jobId")
+			execution, ok := training.Status(jobID)
+			if !ok {
+				http.Error(w, "training job not found", http.StatusNotFound)
+				return
+			}
+			writeJSON(w, execution)
+		})
+		mux.HandleFunc("/v1/fabric/training/stop", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if _, ok := mesh.VerifyClientPin(r); !ok {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			jobID := r.URL.Query().Get("jobId")
+			if err := training.Stop(jobID); err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			writeJSON(w, map[string]bool{"stopped": true})
+		})
+	}
 	return mux
 }
 

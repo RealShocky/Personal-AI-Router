@@ -40,6 +40,13 @@ does not pretend that a Mac Metal worker can join a CUDA collective, and it
 does not turn CPU RAM into VRAM. A future adapter can provide Metal-capable
 collectives or another runtime behind the same plan contract.
 
+Worker nodes expose authenticated training lifecycle endpoints for start,
+status, and stop. The coordinator must send the same validated request and
+node rank to each assigned worker; each worker launches its local `torchrun`
+without a shell, allowing the collective runtime to establish its rendezvous.
+This is a real process-supervision path, but a trainer script and compatible
+PyTorch environment must still be installed on every participating node.
+
 ## Worker states
 
 Workers move through `discovered`, `authenticated`, `probing`, `ready`,

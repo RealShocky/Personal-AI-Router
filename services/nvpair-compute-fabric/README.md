@@ -39,6 +39,12 @@ worlds. Metal and mixed-backend training are rejected until a collective
 runtime with those semantics is installed and probed; Metal remains available
 for inference adapters.
 
+Worker-mode HTTP endpoints `/v1/fabric/training/start`,
+`/v1/fabric/training/status`, and `/v1/fabric/training/stop` supervise the
+validated `torchrun` process over the same pinned mTLS fabric. The endpoint
+does not execute a caller-provided shell string: the service constructs the
+argument vector and invokes the fixed `torchrun` executable directly.
+
 CUDA and Metal are capability labels for group planning. `fabric:job-start` first creates and validates a tensor-sharding execution plan, then creates one loopback relay per advertised worker and launches a single logical llama.cpp server with its `--rpc` list. The llama.cpp RPC adapter is the first actual execution path; other runtimes still require
 their own adapter and checkpoint semantics.
 

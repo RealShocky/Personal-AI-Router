@@ -4,8 +4,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"strconv"
+	"sync"
 
 	"nvpair-shared/fabricwire"
 )
@@ -39,6 +43,95 @@ type TrainingRequest struct {
 	Nodes                   []TrainingNode      `json:"nodes"`
 }
 
+type TrainingExecution struct {
+	JobID    string `json:"jobId"`
+	NodeRank uint32 `json:"nodeRank"`
+	PID      int    `json:"pid"`
+	State    string `json:"state"`
+}
+
+type trainingProcess struct {
+	execution     TrainingExecution
+	cmd           *exec.Cmd
+	stopRequested bool
+}
+
+type TrainingManager struct {
+	mu         sync.Mutex
+	ctx        context.Context
+	executions map[string]*trainingProcess
+	command    func(context.Context, string, ...string) *exec.Cmd
+}
+
+func NewTrainingManager(ctx context.Context) *TrainingManager {
+	return &TrainingManager{ctx: ctx, executions: make(map[string]*trainingProcess), command: exec.CommandContext}
+}
+
+func (m *TrainingManager) Start(request TrainingRequest, nodeRank uint32) (TrainingExecution, error) {
+	args, err := BuildTorchRunCommand(request, nodeRank)
+	if err != nil {
+		return TrainingExecution{}, err
+	}
+	m.mu.Lock()
+	if _, exists := m.executions[request.JobID]; exists {
+		m.mu.Unlock()
+		return TrainingExecution{}, fmt.Errorf("training job is already running")
+	}
+	m.mu.Unlock()
+	cmd := m.command(m.ctx, args[0], args[1:]...)
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		return TrainingExecution{}, fmt.Errorf("start torchrun: %w", err)
+	}
+	execution := TrainingExecution{JobID: request.JobID, NodeRank: nodeRank, PID: cmd.Process.Pid, State: "running"}
+	process := &trainingProcess{execution: execution, cmd: cmd}
+	m.mu.Lock()
+	m.executions[request.JobID] = process
+	m.mu.Unlock()
+	go m.wait(request.JobID, process)
+	return execution, nil
+}
+
+func (m *TrainingManager) wait(jobID string, process *trainingProcess) {
+	_ = process.cmd.Wait()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	current, ok := m.executions[jobID]
+	if !ok || current != process {
+		return
+	}
+	process.execution.State = "failed"
+	if process.stopRequested || m.ctx.Err() != nil {
+		process.execution.State = "stopped"
+	}
+}
+
+func (m *TrainingManager) Stop(jobID string) error {
+	m.mu.Lock()
+	process, ok := m.executions[jobID]
+	if !ok || process.execution.State != "running" {
+		m.mu.Unlock()
+		return fmt.Errorf("training job is not running")
+	}
+	process.stopRequested = true
+	m.mu.Unlock()
+	if err := process.cmd.Process.Kill(); err != nil {
+		return fmt.Errorf("stop training job: %w", err)
+	}
+	return nil
+}
+
+func (m *TrainingManager) Status(jobID string) (TrainingExecution, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	process, ok := m.executions[jobID]
+	if !ok {
+		return TrainingExecution{}, false
+	}
+	return process.execution, true
+}
+
 func (r TrainingRequest) Validate() error {
 	if r.JobID == "" || r.ModelDigest == "" || r.TrainerPath == "" || r.ModelPath == "" || r.DatasetPath == "" || r.CheckpointDirectory == "" || r.RendezvousEndpoint == "" {
 		return fmt.Errorf("training request requires jobId, modelDigest, trainerPath, modelPath, datasetPath, checkpointDirectory, and rendezvousEndpoint")
@@ -49,11 +142,11 @@ func (r TrainingRequest) Validate() error {
 	if r.ProcessesPerNode == 0 || r.CheckpointIntervalSteps == 0 || len(r.Nodes) == 0 {
 		return fmt.Errorf("training request requires nodes, positive processesPerNode, and checkpointIntervalSteps")
 	}
+	backend := r.Nodes[0].Backend
+	if backend != "cpu" && backend != "cuda" {
+		return fmt.Errorf("torchrun adapter does not support backend %q", backend)
+	}
 	if len(r.Nodes) > 1 {
-		backend := r.Nodes[0].Backend
-		if backend != "cpu" && backend != "cuda" {
-			return fmt.Errorf("torchrun adapter does not support backend %q", backend)
-		}
 		for _, node := range r.Nodes[1:] {
 			if node.Backend != backend {
 				return fmt.Errorf("torchrun adapter requires homogeneous backends, got %q and %q", backend, node.Backend)
