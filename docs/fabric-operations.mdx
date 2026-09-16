@@ -85,7 +85,9 @@ the model SHA-256 digest, the configured `llama-server` path, an HTTP port, and
 the desired CUDA worker count. **Start distributed inference** asks the broker
 to admit the workers, creates authenticated RPC relays, and launches one
 llama.cpp HTTP service. The card shows the remote RPC peer count and refreshes
-the job state. Stop the job from the same card.
+the job state. Optional slot-save and checkpoint fields enable periodic
+checkpoint capture and verified slot restore after worker loss. Stop the job
+from the same card.
 
 The model path is local to the coordinator because llama.cpp streams the
 selected tensors to RPC workers; workers do not need a second copy for this

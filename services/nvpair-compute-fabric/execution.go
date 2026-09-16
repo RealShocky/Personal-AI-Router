@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,15 +19,16 @@ import (
 )
 
 type StartRequest struct {
-	JobID          string                  `json:"jobId"`
-	ModelDigest    string                  `json:"modelDigest"`
-	ServerPath     string                  `json:"serverPath"`
-	ModelPath      string                  `json:"modelPath"`
-	HTTPPort       int                     `json:"httpPort"`
-	SlotSavePath   string                  `json:"slotSavePath,omitempty"`
-	CheckpointFile string                  `json:"checkpointFile,omitempty"`
-	CheckpointSlot int                     `json:"checkpointSlot,omitempty"`
-	Group          fabricwire.GroupRequest `json:"group"`
+	JobID                     string                  `json:"jobId"`
+	ModelDigest               string                  `json:"modelDigest"`
+	ServerPath                string                  `json:"serverPath"`
+	ModelPath                 string                  `json:"modelPath"`
+	HTTPPort                  int                     `json:"httpPort"`
+	SlotSavePath              string                  `json:"slotSavePath,omitempty"`
+	CheckpointFile            string                  `json:"checkpointFile,omitempty"`
+	CheckpointSlot            int                     `json:"checkpointSlot,omitempty"`
+	CheckpointIntervalSeconds uint64                  `json:"checkpointIntervalSeconds,omitempty"`
+	Group                     fabricwire.GroupRequest `json:"group"`
 }
 
 type Execution struct {
@@ -43,6 +45,7 @@ type ExecutionManager struct {
 	cluster    string
 	executions map[string]*runningExecution
 	command    func(context.Context, string, ...string) *exec.Cmd
+	checkpoint func(fabricwire.Checkpoint) error
 }
 
 type runningExecution struct {
@@ -57,6 +60,12 @@ type runningExecution struct {
 
 func NewExecutionManager(ctx context.Context, clusterDir string) *ExecutionManager {
 	return &ExecutionManager{ctx: ctx, cluster: clusterDir, executions: make(map[string]*runningExecution), command: exec.CommandContext}
+}
+
+func (m *ExecutionManager) SetCheckpointSink(sink func(fabricwire.Checkpoint) error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.checkpoint = sink
 }
 
 func (m *ExecutionManager) StartWithExecutionPlan(request StartRequest, executionPlan fabricwire.ExecutionPlan) (Execution, error) {
@@ -97,6 +106,9 @@ func (m *ExecutionManager) Start(request StartRequest, plan fabricwire.GroupPlan
 	}
 	if len(plan.Workers) == 0 {
 		return Execution{}, fmt.Errorf("job start requires at least one planned worker")
+	}
+	if request.CheckpointIntervalSeconds > 0 && (request.CheckpointFile == "" || request.SlotSavePath == "") {
+		return Execution{}, fmt.Errorf("checkpoint interval requires checkpointFile and slotSavePath")
 	}
 
 	m.mu.Lock()
@@ -142,10 +154,48 @@ func (m *ExecutionManager) Start(request StartRequest, plan fabricwire.GroupPlan
 	m.executions[request.JobID] = running
 	m.mu.Unlock()
 	go m.wait(request.JobID, running)
+	if request.CheckpointIntervalSeconds > 0 && request.CheckpointFile != "" && request.SlotSavePath != "" {
+		go m.checkpointLoop(running)
+	}
 	if request.CheckpointFile != "" && request.SlotSavePath != "" {
 		go restoreSlotCheckpoint(m.ctx, request.HTTPPort, request.CheckpointSlot, request.CheckpointFile)
 	}
 	return execution, nil
+}
+
+func (m *ExecutionManager) checkpointLoop(running *runningExecution) {
+	interval := time.Duration(running.request.CheckpointIntervalSeconds) * time.Second
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	var stage uint32
+	for {
+		select {
+		case <-ticker.C:
+			stage++
+			checkpoint := fabricwire.Checkpoint{
+				JobID:    running.execution.JobID,
+				GroupID:  running.plan.GroupID,
+				Epoch:    running.plan.Epoch,
+				Stage:    stage,
+				SlotID:   running.request.CheckpointSlot,
+				Filename: running.request.CheckpointFile,
+			}
+			if err := m.SaveCheckpoint(checkpoint); err != nil {
+				log.Printf("checkpoint save failed job=%s stage=%d: %v", checkpoint.JobID, checkpoint.Stage, err)
+				continue
+			}
+			m.mu.Lock()
+			sink := m.checkpoint
+			m.mu.Unlock()
+			if sink != nil {
+				if err := sink(checkpoint); err != nil {
+					log.Printf("checkpoint commit failed job=%s stage=%d: %v", checkpoint.JobID, checkpoint.Stage, err)
+				}
+			}
+		case <-m.ctx.Done():
+			return
+		}
+	}
 }
 
 func (m *ExecutionManager) wait(jobID string, running *runningExecution) {

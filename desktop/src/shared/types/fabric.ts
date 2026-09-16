@@ -55,6 +55,9 @@ export interface FabricInferenceRequest {
     serverPath: string
     modelPath: string
     httpPort: number
+    slotSavePath?: string
+    checkpointFile?: string
+    checkpointIntervalSeconds?: number
     group: FabricGroupRequest
 }
 

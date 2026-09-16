@@ -7,6 +7,7 @@ import (
 	"context"
 	"os/exec"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -112,6 +113,22 @@ func TestExecutionManagerCarriesExecutionPlanGroupIntoRecoveryState(t *testing.T
 	manager.mu.Unlock()
 	if running == nil || running.group.GroupID != "plan-1" || running.group.Runtime != "llama.cpp" || running.group.WorkerGoal != 1 {
 		t.Fatalf("recovery group = %+v", running)
+	}
+}
+
+func TestExecutionManagerRequiresCheckpointStorageForPeriodicCheckpoints(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager := NewExecutionManager(ctx, "")
+	_, err := manager.Start(StartRequest{
+		JobID:                     "job-checkpoint",
+		ServerPath:                "llama-server",
+		ModelPath:                 "model.gguf",
+		HTTPPort:                  11450,
+		CheckpointIntervalSeconds: 5,
+	}, fabricwire.GroupPlan{GroupID: "g1", Runtime: "llama.cpp", Workers: []string{"w1"}})
+	if err == nil || !strings.Contains(err.Error(), "checkpoint interval") {
+		t.Fatalf("err = %v, want checkpoint storage validation", err)
 	}
 }
 

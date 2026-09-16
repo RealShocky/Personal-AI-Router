@@ -84,6 +84,7 @@ func main() {
 	mgr := NewManager(*timeout)
 	jobs := NewJobStore(*stateDir)
 	executions := NewExecutionManager(ctx, *clusterDir)
+	executions.SetCheckpointSink(jobs.SaveCheckpoint)
 	training := NewTrainingManager(ctx)
 	trainingCoordinator := newHTTPTrainingCoordinator(*clusterDir, *stateDir, 15*time.Second)
 	codec := NewCodec(transport)

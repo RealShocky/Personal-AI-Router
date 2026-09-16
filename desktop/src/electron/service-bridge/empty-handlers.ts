@@ -194,6 +194,9 @@ function fabricInferenceRequestJson(request: FabricInferenceRequest | undefined)
         serverPath: request.serverPath,
         modelPath: request.modelPath,
         httpPort: request.httpPort,
+        ...(request.slotSavePath === undefined ? {} : { slotSavePath: request.slotSavePath }),
+        ...(request.checkpointFile === undefined ? {} : { checkpointFile: request.checkpointFile }),
+        ...(request.checkpointIntervalSeconds === undefined ? {} : { checkpointIntervalSeconds: request.checkpointIntervalSeconds }),
         group: fabricGroupRequestJson(request.group)
     }
 }

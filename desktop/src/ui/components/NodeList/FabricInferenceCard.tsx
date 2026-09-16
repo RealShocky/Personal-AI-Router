@@ -16,6 +16,9 @@ export default function FabricInferenceCard() {
     const [modelPath, setModelPath] = useState('')
     const [httpPort, setHttpPort] = useState('19090')
     const [workerGoal, setWorkerGoal] = useState('2')
+    const [slotSavePath, setSlotSavePath] = useState('')
+    const [checkpointFile, setCheckpointFile] = useState('')
+    const [checkpointInterval, setCheckpointInterval] = useState('0')
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
 
@@ -63,6 +66,9 @@ export default function FabricInferenceCard() {
                 serverPath: serverPath.trim(),
                 modelPath: modelPath.trim(),
                 httpPort: Number(httpPort),
+                ...(slotSavePath.trim() === '' ? {} : { slotSavePath: slotSavePath.trim() }),
+                ...(checkpointFile.trim() === '' ? {} : { checkpointFile: checkpointFile.trim() }),
+                ...(Number(checkpointInterval) > 0 ? { checkpointIntervalSeconds: Number(checkpointInterval) } : {}),
                 group: { groupId: jobId.trim(), runtime: 'llama.cpp', backends: ['cuda'], workerGoal: goal, allowMixed: false, modelDigest: modelDigest.trim() }
             }
             setExecution(await window.pairApi.fabric.startInference(request))
@@ -88,6 +94,9 @@ export default function FabricInferenceCard() {
                     <FormField slotLabel="Model path"><TextInput value={modelPath} onValueChange={setModelPath} disabled={busy} size="small" /></FormField>
                     <FormField slotLabel="HTTP port"><TextInput value={httpPort} onValueChange={setHttpPort} disabled={busy} size="small" /></FormField>
                     <FormField slotLabel="Workers"><TextInput value={workerGoal} onValueChange={setWorkerGoal} disabled={busy} size="small" /></FormField>
+                    <FormField slotLabel="Slot save path"><TextInput value={slotSavePath} onValueChange={setSlotSavePath} disabled={busy} size="small" /></FormField>
+                    <FormField slotLabel="Checkpoint file"><TextInput value={checkpointFile} onValueChange={setCheckpointFile} disabled={busy} size="small" /></FormField>
+                    <FormField slotLabel="Checkpoint seconds"><TextInput value={checkpointInterval} onValueChange={setCheckpointInterval} disabled={busy} size="small" /></FormField>
                 </Flex>
                 <Flex gap="2">
                     <Button kind="primary" color="brand" size="small" onClick={start} disabled={busy || readyCuda < Number(workerGoal)}>Start distributed inference</Button>
