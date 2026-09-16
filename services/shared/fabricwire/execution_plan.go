@@ -22,6 +22,7 @@ const (
 
 type WorkerAssignment struct {
 	WorkerID           string `json:"workerId"`
+	Endpoint           string `json:"endpoint,omitempty"`
 	ShardIndex         uint32 `json:"shardIndex"`
 	MemoryBudgetBytes  uint64 `json:"memoryBudgetBytes"`
 	GPUVramBudgetBytes uint64 `json:"gpuVramBudgetBytes,omitempty"`
@@ -41,6 +42,7 @@ type FailoverPolicy struct {
 type ExecutionPlan struct {
 	Version       uint32             `json:"version"`
 	PlanID        string             `json:"planId"`
+	Epoch         uint64             `json:"epoch"`
 	Runtime       string             `json:"runtime"`
 	ModelDigest   string             `json:"modelDigest"`
 	ShardStrategy ShardStrategy      `json:"shardStrategy"`

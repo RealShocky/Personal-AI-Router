@@ -633,17 +633,25 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			_ = codec.RespondError(msg.ID, -32602, "invalid job start")
 			return
 		}
-		plan, err := mgr.PlanGroup(request.Group)
+		if request.Group.ModelDigest == "" {
+			request.Group.ModelDigest = request.ModelDigest
+		}
+		group, err := mgr.PlanGroup(request.Group)
 		if err != nil {
 			_ = codec.RespondError(msg.ID, -32001, err.Error())
 			return
 		}
-		job := JobRecord{JobID: request.JobID, GroupID: plan.GroupID, ModelDigest: request.ModelDigest, Epoch: plan.Epoch}
+		executionPlan, err := mgr.BuildExecutionPlan(request.Group, group, fabricwire.ShardTensor, fabricwire.TransportMTLSRPC)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32001, err.Error())
+			return
+		}
+		job := JobRecord{JobID: request.JobID, GroupID: group.GroupID, ModelDigest: request.ModelDigest, Epoch: group.Epoch}
 		if err := jobs.Submit(job); err != nil {
 			_ = codec.RespondError(msg.ID, -32003, err.Error())
 			return
 		}
-		execution, err := executions.Start(request, plan)
+		execution, err := executions.StartWithExecutionPlan(request, executionPlan)
 		if err != nil {
 			_ = codec.RespondError(msg.ID, -32004, err.Error())
 			return

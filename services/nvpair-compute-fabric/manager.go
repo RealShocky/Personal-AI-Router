@@ -195,6 +195,7 @@ func (m *Manager) BuildExecutionPlan(request fabricwire.GroupRequest, group fabr
 	plan := fabricwire.ExecutionPlan{
 		Version:       1,
 		PlanID:        group.GroupID,
+		Epoch:         group.Epoch,
 		Runtime:       group.Runtime,
 		ModelDigest:   request.ModelDigest,
 		ShardStrategy: strategy,
@@ -215,6 +216,7 @@ func (m *Manager) BuildExecutionPlan(request fabricwire.GroupRequest, group fabr
 		}
 		plan.Workers = append(plan.Workers, fabricwire.WorkerAssignment{
 			WorkerID:           workerID,
+			Endpoint:           group.Endpoints[workerID],
 			ShardIndex:         uint32(index),
 			MemoryBudgetBytes:  worker.Heartbeat.MemoryFree,
 			GPUVramBudgetBytes: worker.Heartbeat.GPUVramFree,

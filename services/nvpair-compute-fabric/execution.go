@@ -59,6 +59,32 @@ func NewExecutionManager(ctx context.Context, clusterDir string) *ExecutionManag
 	return &ExecutionManager{ctx: ctx, cluster: clusterDir, executions: make(map[string]*runningExecution), command: exec.CommandContext}
 }
 
+func (m *ExecutionManager) StartWithExecutionPlan(request StartRequest, executionPlan fabricwire.ExecutionPlan) (Execution, error) {
+	if err := executionPlan.Validate(); err != nil {
+		return Execution{}, fmt.Errorf("invalid execution plan: %w", err)
+	}
+	if request.ModelDigest != "" && request.ModelDigest != executionPlan.ModelDigest {
+		return Execution{}, fmt.Errorf("model digest does not match execution plan")
+	}
+	if request.ModelDigest == "" {
+		request.ModelDigest = executionPlan.ModelDigest
+	}
+	group := fabricwire.GroupPlan{
+		GroupID:   executionPlan.PlanID,
+		Runtime:   executionPlan.Runtime,
+		Epoch:     executionPlan.Epoch,
+		Workers:   make([]string, 0, len(executionPlan.Workers)),
+		Endpoints: make(map[string]string),
+	}
+	for _, assignment := range executionPlan.Workers {
+		group.Workers = append(group.Workers, assignment.WorkerID)
+		if assignment.Endpoint != "" {
+			group.Endpoints[assignment.WorkerID] = assignment.Endpoint
+		}
+	}
+	return m.Start(request, group)
+}
+
 func (m *ExecutionManager) Start(request StartRequest, plan fabricwire.GroupPlan) (Execution, error) {
 	if request.JobID == "" || request.ServerPath == "" || request.ModelPath == "" || request.HTTPPort <= 0 {
 		return Execution{}, fmt.Errorf("job start requires jobId, serverPath, modelPath, and positive httpPort")

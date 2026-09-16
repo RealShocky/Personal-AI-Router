@@ -58,6 +58,24 @@ func TestExecutionManagerCreatesOneRelayPerAdvertisedWorker(t *testing.T) {
 	}
 }
 
+func TestExecutionManagerRejectsInvalidExecutionPlanBeforeLaunch(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager := NewExecutionManager(ctx, "")
+	launched := false
+	manager.command = func(ctx context.Context, path string, args ...string) *exec.Cmd {
+		launched = true
+		return exec.CommandContext(ctx, "go", "version")
+	}
+	_, err := manager.StartWithExecutionPlan(
+		StartRequest{JobID: "j-invalid", ModelDigest: "sha256:model", ServerPath: "llama-server", ModelPath: "model.gguf", HTTPPort: 11450},
+		fabricwire.ExecutionPlan{Version: 1, PlanID: "p1", Runtime: "llama.cpp", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardTensor, Transport: fabricwire.TransportLocal},
+	)
+	if err == nil || launched {
+		t.Fatalf("invalid execution plan launched: err=%v launched=%v", err, launched)
+	}
+}
+
 func TestExecutionManagerAutomaticallyRecoversFailedJobIntoFreshGroupEpoch(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

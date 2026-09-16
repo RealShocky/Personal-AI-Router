@@ -31,7 +31,7 @@ over its broker JSON-RPC surface: `fabric:plan-group`, `fabric:job-submit`,
 `fabric:checkpoint`, `fabric:recover`, `fabric:job-start`, `fabric:job-stop`, `fabric:job-status`, `fabric:get-status`, and `fabric:build-execution-plan`. The latter returns persisted jobs and live executions for the operator UI. `fabric:build-execution-plan` converts an admitted group into a versioned plan with explicit shard strategy, transport, per-worker memory budgets, checkpoint policy, and failover policy. When a checkpoint includes a slot and filename, the adapter uses llama.cpp slot save/restore endpoints and `--slot-save-path`. Checkpoints are monotonic within an
 epoch and are persisted under the broker's per-user `fabric/` state directory.
 
-CUDA and Metal are capability labels for group planning. `fabric:job-start` creates one loopback relay per advertised worker and launches a single logical llama.cpp server with its `--rpc` list. The llama.cpp RPC adapter is the first actual execution path; other runtimes still require
+CUDA and Metal are capability labels for group planning. `fabric:job-start` first creates and validates a tensor-sharding execution plan, then creates one loopback relay per advertised worker and launches a single logical llama.cpp server with its `--rpc` list. The llama.cpp RPC adapter is the first actual execution path; other runtimes still require
 their own adapter and checkpoint semantics.
 
 For a real llama.cpp group, run a loopback `ggml-rpc-server` on each worker,
