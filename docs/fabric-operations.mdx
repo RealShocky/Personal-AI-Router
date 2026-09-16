@@ -73,6 +73,9 @@ For the current DGX GB10 validation, use the matched llama.cpp `b8487`
 revision (`f93c09e26`) on both sides. PAIR-owned WSL and DGX RPC paths now use
 this revision; the previous binaries are retained as `.pre-b8487` backups.
 Other llama.cpp/SGLang/Ollama projects are outside PAIR's managed paths.
+On Linux and WSL, the fabric supervisor automatically adds the selected
+executable's directory to the dynamic-library search path, so a llama.cpp
+build with adjacent `libggml*.so` files can be supervised without a wrapper.
 
 ## 2. Pair a device
 

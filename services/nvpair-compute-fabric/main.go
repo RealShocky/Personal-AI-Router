@@ -21,6 +21,8 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -607,6 +609,7 @@ func superviseChild(ctx context.Context, name, executable string, args []string)
 	backoff := time.Second
 	for ctx.Err() == nil {
 		cmd := exec.CommandContext(ctx, executable, args...)
+		cmd.Env = childEnvironment(executable)
 		cmd.Stdout = os.Stderr
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()
@@ -627,6 +630,30 @@ func superviseChild(ctx context.Context, name, executable string, args []string)
 			backoff *= 2
 		}
 	}
+}
+
+func childEnvironment(executable string) []string {
+	environment := os.Environ()
+	if runtime.GOOS == "windows" {
+		return environment
+	}
+	variable := "LD_LIBRARY_PATH"
+	if runtime.GOOS == "darwin" {
+		variable = "DYLD_LIBRARY_PATH"
+	}
+	directory := filepath.Dir(executable)
+	current := os.Getenv(variable)
+	filtered := make([]string, 0, len(environment)+1)
+	prefix := variable + "="
+	for _, value := range environment {
+		if !strings.HasPrefix(value, prefix) {
+			filtered = append(filtered, value)
+		}
+	}
+	if current == "" {
+		return append(filtered, variable+"="+directory)
+	}
+	return append(filtered, variable+"="+current+string(os.PathListSeparator)+directory)
 }
 
 func serveRPCRelay(ctx context.Context, listenAddr, remoteURL, clusterDir, peerID string) {
