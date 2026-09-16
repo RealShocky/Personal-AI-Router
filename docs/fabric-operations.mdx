@@ -137,6 +137,10 @@ the fabric executable, an installer/launcher, this documentation, and a SHA256
 manifest. Archives intentionally exclude certificates, private keys, cluster
 state, SSH keys, and models.
 
+When building macOS artifacts on Windows, use
+`package-fabric-macos-cross.ps1` with a cross-compiled binary. It produces the
+same worker-only archive and SHA256 manifest as the native macOS packager.
+
 On Windows, `package-fabric-windows.ps1` uses the staged service binary by
 default. To package a freshly built portable binary from another output
 directory, pass it explicitly with `-Binary`.
