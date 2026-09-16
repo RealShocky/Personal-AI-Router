@@ -88,7 +88,8 @@ manual recovery; the three-attempt cap still applies.
 Workers move through `discovered`, `authenticated`, `probing`, `ready`,
 `leased`, `serving`, `suspect`, and `quarantined`. Missed heartbeats stop new
 assignments before quarantine. A worker that returns must complete a fresh
-mutual-TLS handshake and capability probe; stale worker epochs cannot resume an
+mutual-TLS handshake and capability probe; a fresh-epoch heartbeat can
+complete that recovery atomically, while stale worker epochs cannot resume an
 old job.
 
 ## Device groups

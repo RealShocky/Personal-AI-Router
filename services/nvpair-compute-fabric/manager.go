@@ -78,8 +78,8 @@ func (m *Manager) Heartbeat(heartbeat fabricwire.Heartbeat, now time.Time) error
 	m.mu.RLock()
 	current, exists := m.workers[heartbeat.WorkerID]
 	m.mu.RUnlock()
-	if exists && current.State == fabricwire.WorkerQuarantined {
-		return fmt.Errorf("worker is quarantined; fresh epoch rejoin required")
+	if exists && current.State == fabricwire.WorkerQuarantined && heartbeat.Epoch <= current.Heartbeat.Epoch {
+		return fmt.Errorf("worker is quarantined; fresh epoch required")
 	}
 	m.AcceptHeartbeat(heartbeat, now)
 	return nil

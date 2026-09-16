@@ -78,6 +78,23 @@ func TestManagerRejectsHeartbeatFromQuarantinedWorkerUntilRejoin(t *testing.T) {
 	}
 }
 
+func TestManagerAcceptsFreshHeartbeatAsQuarantineRecovery(t *testing.T) {
+	now := time.Unix(100, 0)
+	m := NewManager(5 * time.Second)
+	heartbeat := fabricwire.Heartbeat{WorkerID: "w1", NodeID: "n1", State: fabricwire.WorkerReady, Epoch: 1}
+	if err := m.Heartbeat(heartbeat, now); err != nil {
+		t.Fatalf("initial heartbeat: %v", err)
+	}
+	m.Reconcile(now.Add(12 * time.Second))
+	heartbeat.Epoch = 2
+	if err := m.Heartbeat(heartbeat, now.Add(13*time.Second)); err != nil {
+		t.Fatalf("fresh heartbeat should recover quarantined worker: %v", err)
+	}
+	if !m.Assignable("w1") {
+		t.Fatal("fresh heartbeat did not restore assignment eligibility")
+	}
+}
+
 func TestManagerPlansOnlyCompatibleReadyWorkers(t *testing.T) {
 	m := NewManager(time.Second)
 	now := time.Unix(100, 0)
