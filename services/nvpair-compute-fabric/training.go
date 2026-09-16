@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -60,6 +61,7 @@ type trainingProcess struct {
 	cmd           *exec.Cmd
 	request       TrainingRequest
 	stopRequested bool
+	done          chan struct{}
 }
 
 type TrainingManager struct {
@@ -345,6 +347,17 @@ func (c *TrainingCoordinator) RecoverGroup(ctx context.Context, jobID string, no
 	}
 	c.mu.Unlock()
 
+	for _, node := range group.request.Nodes {
+		if err := c.stop(ctx, jobID, node); err != nil {
+			c.mu.Lock()
+			group = c.groups[jobID]
+			group.state = "failed"
+			c.groups[jobID] = group
+			_ = c.persistLocked()
+			c.mu.Unlock()
+			return nil, fmt.Errorf("stop previous training world: %w", err)
+		}
+	}
 	executions, err := c.launchTrainingWorld(ctx, request)
 	c.mu.Lock()
 	group = c.groups[jobID]
@@ -472,7 +485,7 @@ func (m *TrainingManager) Start(request TrainingRequest, nodeRank uint32) (Train
 		return TrainingExecution{}, fmt.Errorf("start torchrun: %w", err)
 	}
 	execution := TrainingExecution{JobID: request.JobID, NodeRank: nodeRank, PID: cmd.Process.Pid, State: "running", Checkpoint: trainingCheckpoint(request)}
-	process := &trainingProcess{execution: execution, cmd: cmd, request: request}
+	process := &trainingProcess{execution: execution, cmd: cmd, request: request, done: make(chan struct{})}
 	m.mu.Lock()
 	m.executions[request.JobID] = process
 	m.mu.Unlock()
@@ -483,9 +496,9 @@ func (m *TrainingManager) Start(request TrainingRequest, nodeRank uint32) (Train
 func (m *TrainingManager) wait(jobID string, process *trainingProcess) {
 	err := process.cmd.Wait()
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	current, ok := m.executions[jobID]
 	if !ok || current != process {
+		m.mu.Unlock()
 		return
 	}
 	process.execution.State = "complete"
@@ -495,6 +508,8 @@ func (m *TrainingManager) wait(jobID string, process *trainingProcess) {
 	if process.stopRequested || m.ctx.Err() != nil {
 		process.execution.State = "stopped"
 	}
+	close(process.done)
+	m.mu.Unlock()
 }
 
 func (m *TrainingManager) Stop(jobID string) error {
@@ -509,6 +524,7 @@ func (m *TrainingManager) Stop(jobID string) error {
 	if err := process.cmd.Process.Kill(); err != nil {
 		return fmt.Errorf("stop training job: %w", err)
 	}
+	<-process.done
 	return nil
 }
 
@@ -524,7 +540,8 @@ func (m *TrainingManager) Status(jobID string) (TrainingExecution, bool) {
 }
 
 func trainingCheckpoint(request TrainingRequest) *fabricwire.Checkpoint {
-	manifestPath := filepath.Join(request.CheckpointDirectory, "pair-canary-manifest.json")
+	checkpointDirectory := hostCheckpointDirectory(request.CheckpointDirectory)
+	manifestPath := filepath.Join(checkpointDirectory, "pair-canary-manifest.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil
@@ -536,11 +553,25 @@ func trainingCheckpoint(request TrainingRequest) *fabricwire.Checkpoint {
 	if err := json.Unmarshal(data, &manifest); err != nil || manifest.Step == 0 || !validSlotFilename(manifest.Checkpoint) {
 		return nil
 	}
-	checkpointPath := filepath.Join(request.CheckpointDirectory, manifest.Checkpoint)
+	checkpointPath := filepath.Join(checkpointDirectory, manifest.Checkpoint)
 	if _, err := os.Stat(checkpointPath); err != nil {
 		return nil
 	}
 	return &fabricwire.Checkpoint{JobID: request.JobID, GroupID: request.JobID, Stage: manifest.Step, Filename: manifest.Checkpoint}
+}
+
+func hostCheckpointDirectory(directory string) string {
+	root := strings.TrimSpace(os.Getenv("PAIR_TRAINING_CHECKPOINT_ROOT"))
+	if root == "" {
+		return directory
+	}
+	const containerRoot = "/opt/nvpair/training"
+	normalized := filepath.ToSlash(filepath.Clean(directory))
+	if normalized != containerRoot && !strings.HasPrefix(normalized, containerRoot+"/") {
+		return directory
+	}
+	relative := strings.TrimPrefix(normalized, containerRoot)
+	return filepath.Join(root, filepath.FromSlash(relative))
 }
 
 func (r TrainingRequest) Validate() error {

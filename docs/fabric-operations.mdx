@@ -213,7 +213,11 @@ install `pair-torchrun-dgx.sh` as `/opt/nvpair/fabric/torchrun`. The DGX
 launcher starts a disposable container from the already-present CUDA image,
 mounting only `/opt/nvpair/training`; it does not stop, edit, or enter the
 existing SGLang container. Set `PAIR_TORCHRUN_PATH=/opt/nvpair/fabric/torchrun`
-in each worker's PAIR service environment and restart only the PAIR worker.
+in each worker's PAIR service environment and restart only the PAIR worker. On
+DGX, also set `PAIR_TRAINING_CHECKPOINT_ROOT` to the host directory mounted as
+`/opt/nvpair/training` (for example `/home/admin/pair-fabric`). This lets the
+host-side status process read manifests produced inside the disposable
+container and is required for automatic checkpoint recovery.
 The DGX wrapper exposes all GPUs by default; set its PAIR-owned
 `PAIR_TRAINING_CUDA_VISIBLE_DEVICES` environment variable to an explicit device
 list when isolating a canary.

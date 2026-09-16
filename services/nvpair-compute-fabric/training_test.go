@@ -178,6 +178,28 @@ func TestTrainingManagerReportsCheckpointManifest(t *testing.T) {
 	t.Fatal("training process did not complete")
 }
 
+func TestTrainingManagerMapsContainerCheckpointPathToHostRoot(t *testing.T) {
+	hostRoot := t.TempDir()
+	checkpointDir := filepath.Join(hostRoot, "cross-gpu-recovery")
+	if err := os.MkdirAll(checkpointDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	checkpointFile := "pair-canary-step-2.pt"
+	if err := os.WriteFile(filepath.Join(checkpointDir, checkpointFile), []byte("checkpoint"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest := []byte(`{"step":2,"checkpoint":"pair-canary-step-2.pt"}`)
+	if err := os.WriteFile(filepath.Join(checkpointDir, "pair-canary-manifest.json"), manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PAIR_TRAINING_CHECKPOINT_ROOT", hostRoot)
+	request := TrainingRequest{CheckpointDirectory: "/opt/nvpair/training/cross-gpu-recovery"}
+	checkpoint := trainingCheckpoint(request)
+	if checkpoint == nil || checkpoint.Filename != checkpointFile || checkpoint.Stage != 2 {
+		t.Fatalf("checkpoint = %+v", checkpoint)
+	}
+}
+
 func TestTrainingCoordinatorRollsBackPartialGroupLaunch(t *testing.T) {
 	request := TrainingRequest{
 		JobID:                   "train-group",
@@ -345,12 +367,16 @@ func TestTrainingCoordinatorRecoversFromCheckpointWithReplacementWorkers(t *test
 		Nodes:                   []TrainingNode{{WorkerID: "node-a", Address: "127.0.0.1", Backend: "cpu"}},
 	}
 	startedRequests := make([]TrainingRequest, 0, 2)
+	stoppedWorkers := make([]string, 0, 1)
 	coordinator := NewTrainingCoordinator(
 		func(_ context.Context, _ TrainingNode, request TrainingRequest, _ uint32) (TrainingExecution, error) {
 			startedRequests = append(startedRequests, request)
 			return TrainingExecution{JobID: request.JobID, State: "running"}, nil
 		},
-		func(_ context.Context, _ string, _ TrainingNode) error { return nil },
+		func(_ context.Context, _ string, node TrainingNode) error {
+			stoppedWorkers = append(stoppedWorkers, node.WorkerID)
+			return nil
+		},
 	)
 	if _, err := coordinator.StartGroup(context.Background(), request); err != nil {
 		t.Fatalf("start group: %v", err)
@@ -367,7 +393,7 @@ func TestTrainingCoordinatorRecoversFromCheckpointWithReplacementWorkers(t *test
 		t.Fatalf("recover group: %v", err)
 	}
 	status, _ = coordinator.StatusGroup(request.JobID)
-	if status.State != "running" || status.RecoveryAttempts != 1 || len(startedRequests) != 2 || startedRequests[1].ResumeCheckpoint != "step-0008.pt" {
+	if status.State != "running" || status.RecoveryAttempts != 1 || len(startedRequests) != 2 || startedRequests[1].ResumeCheckpoint != "step-0008.pt" || len(stoppedWorkers) != 1 || stoppedWorkers[0] != "node-a" {
 		t.Fatalf("recovered status = %+v requests = %+v", status, startedRequests)
 	}
 }
