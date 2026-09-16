@@ -139,6 +139,10 @@
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Personal AI Router Engine Manager (TCP 14322)" dir=in action=allow protocol=TCP localport=14322 program="$INSTDIR\resources\cli-bin\nvpair-engine-manager.exe" enable=yes profile=any remoteip=localsubnet'
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Personal AI Router Compute Fabric (TCP 14324)" dir=in action=allow protocol=TCP localport=14324 program="$INSTDIR\resources\cli-bin\nvpair-compute-fabric.exe" enable=yes profile=any remoteip=localsubnet'
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Personal AI Router WSL RPC Relays (TCP 52000-52999)" dir=in action=allow protocol=TCP localport=52000-52999 program="$INSTDIR\resources\cli-bin\nvpair-compute-fabric.exe" enable=yes profile=any remoteip=localsubnet'
+  ; Mirrored WSL workers bind outside the Windows process tree. These port-only
+  ; rules let paired Linux peers reach the WSL fabric and static training mesh.
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Personal AI Router WSL Fabric (TCP 15425)" dir=in action=allow protocol=TCP localport=15425 enable=yes profile=any remoteip=localsubnet'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Personal AI Router WSL Training (TCP 29401-29410)" dir=in action=allow protocol=TCP localport=29401-29410 enable=yes profile=any remoteip=localsubnet'
 !macroend
 
 !macro pairRemoveFirewallRules
@@ -162,6 +166,8 @@
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Personal AI Router Engine Manager (TCP 14322)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Personal AI Router Compute Fabric (TCP 14324)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Personal AI Router WSL RPC Relays (TCP 52000-52999)"'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Personal AI Router WSL Fabric (TCP 15425)"'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Personal AI Router WSL Training (TCP 29401-29410)"'
   ; Remove pre-rebrand rules left by older installations.
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="PAIR Ollama Proxy"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="PAIR LM Studio Proxy"'
