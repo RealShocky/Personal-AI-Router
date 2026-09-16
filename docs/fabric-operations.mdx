@@ -218,6 +218,19 @@ path, and enter the model path in WSL form (for example,
 process and still creates the authenticated RPC relays itself; no shell command
 or manual tunnel is required.
 
+### Provision the WSL GPU training runtime
+
+The WSL training adapter is isolated from the llama.cpp environment. On a CUDA
+WSL node, run the bundled installer to create or refresh the PAIR-owned venv:
+
+```bash
+./install-pair-training-wsl.sh
+```
+
+It installs the pinned CUDA 13.0 PyTorch runtime and refuses to finish unless
+PyTorch can see a CUDA device. Do not reuse an application's existing Python
+environment for PAIR training.
+
 ## 3. Pair a device
 
 In the desktop UI, open **Settings > Cluster** on the Windows coordinator and

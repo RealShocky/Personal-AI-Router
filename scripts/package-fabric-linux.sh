@@ -18,6 +18,7 @@ cp "$BINARY" "$STAGE/nvpair-compute-fabric"
 if [[ -f "$CLUSTER_MANAGER" ]]; then cp "$CLUSTER_MANAGER" "$STAGE/nvpair-cluster-manager"; fi
 cp "$ROOT/scripts/install-fabric-worker.sh" "$STAGE/"
 cp "$ROOT/scripts/pair-training-canary.py" "$STAGE/"
+cp "$ROOT/scripts/install-pair-training-wsl.sh" "$STAGE/"
 cp "$ROOT/scripts/pair-torchrun-dgx.sh" "$STAGE/"
 cp "$ROOT/docs/distributed-fabric.mdx" "$STAGE/"
 cp "$ROOT/docs/fabric-operations.mdx" "$STAGE/"
