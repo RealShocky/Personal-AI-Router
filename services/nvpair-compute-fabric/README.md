@@ -45,6 +45,11 @@ validated `torchrun` process over the same pinned mTLS fabric. The endpoint
 does not execute a caller-provided shell string: the service constructs the
 argument vector and invokes the fixed `torchrun` executable directly.
 
+The coordinator JSON-RPC method `fabric:training-start` fans a validated
+request out to every listed rank concurrently. If one rank fails to start, it
+stops the ranks that did start and returns an error; it never leaves a partial
+training world running.
+
 CUDA and Metal are capability labels for group planning. `fabric:job-start` first creates and validates a tensor-sharding execution plan, then creates one loopback relay per advertised worker and launches a single logical llama.cpp server with its `--rpc` list. The llama.cpp RPC adapter is the first actual execution path; other runtimes still require
 their own adapter and checkpoint semantics.
 
