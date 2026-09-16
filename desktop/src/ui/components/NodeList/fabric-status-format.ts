@@ -13,3 +13,12 @@ export function formatFabricWorkerSummary(worker: Pick<FabricWorker, 'runtime' |
     const checkpoint = worker.checkpointSupport ? ' · checkpoints' : ''
     return `${runtime} · ${formatFabricMemory(worker.memoryFree)} · ${worker.probeLatencyMillis} ms · ${backends}${checkpoint}`
 }
+
+export function formatFabricGPUCapacity(worker: Pick<FabricWorker, 'gpuCount' | 'gpuVramTotal' | 'gpuVramFree' | 'backends'>): string {
+    if (worker.gpuCount === 0 || worker.gpuVramTotal === 0) {
+        return worker.backends.some(backend => backend === 'cuda' || backend === 'metal') ? 'GPU telemetry unavailable' : 'CPU-only'
+    }
+    const freeGiB = worker.gpuVramFree / 1024 ** 3
+    const totalGiB = worker.gpuVramTotal / 1024 ** 3
+    return `${worker.gpuCount} GPU${worker.gpuCount === 1 ? '' : 's'} · ${freeGiB.toFixed(1)}/${totalGiB.toFixed(1)} GiB VRAM free`
+}

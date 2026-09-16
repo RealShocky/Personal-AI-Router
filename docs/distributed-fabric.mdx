@@ -58,6 +58,12 @@ rejoin after quarantine. Its llama.cpp adapter can supervise a loopback
 `ggml-rpc-server`, create authenticated RPC relays, and launch a local
 OpenAI-compatible `llama-server` using those relays.
 
+NVIDIA workers also report aggregate GPU count and free/total VRAM in each
+heartbeat when `nvidia-smi` is available. The dashboard displays this beside
+host-memory capacity. A missing NVIDIA probe is reported as CPU-only; it does
+not imply that an integrated or Metal GPU is absent, only that this fabric
+worker build has no compatible VRAM sampler for it yet.
+
 Do not expose a raw distributed-runtime port to the LAN. Only the PAIR
 cluster-mTLS endpoint should be reachable, and only after the participating
 machines have been paired.

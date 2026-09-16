@@ -180,6 +180,7 @@ func runWorkerHeartbeats(ctx context.Context, coordinatorURL, clusterDir, worker
 	client := &http.Client{Timeout: timeout}
 	state := fabricwire.WorkerReady
 	var probeLatency uint64
+	gpuMemory := gpuMemorySnapshot{}
 	var transport *http.Transport
 	for {
 		mesh.Refresh()
@@ -203,10 +204,14 @@ func runWorkerHeartbeats(ctx context.Context, coordinatorURL, clusterDir, worker
 				CheckpointSupport:  checkpointSupport,
 				ProbeLatencyMillis: probeLatency,
 				MemoryFree:         systemMemoryFree(),
+				GPUVramTotal:       gpuMemory.Total,
+				GPUVramFree:        gpuMemory.Free,
+				GPUCount:           gpuMemory.Count,
 			}
 			probeStart := time.Now()
 			postErr := postFabricJSON(ctx, client, coordinatorURL+"/v1/fabric/heartbeat", heartbeat)
 			probeLatency = uint64(time.Since(probeStart).Milliseconds())
+			gpuMemory = readGPUMemory()
 			if postErr != nil {
 				log.Printf("worker heartbeat failed worker=%s err=%v", workerID, postErr)
 				epoch++

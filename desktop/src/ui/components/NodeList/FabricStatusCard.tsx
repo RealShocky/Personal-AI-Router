@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core'
 import type { FabricStatus } from '@/shared/types/fabric'
-import { formatFabricWorkerSummary } from './fabric-status-format'
+import { formatFabricGPUCapacity, formatFabricWorkerSummary } from './fabric-status-format'
 
 const EMPTY_STATUS: FabricStatus = { workers: [], jobs: [], executions: [] }
 
@@ -61,7 +61,7 @@ export default function FabricStatusCard() {
                     <Flex key={worker.workerId} align="center" justify="between" gap="2">
                         <Text kind="body/regular/sm">{worker.nodeId}</Text>
                         <Text kind="body/regular/sm" className="text-subtle-color">
-                            {worker.state} · {formatFabricWorkerSummary(worker)}
+                            {worker.state} · {formatFabricWorkerSummary(worker)} · {formatFabricGPUCapacity(worker)}
                         </Text>
                     </Flex>
                 ))}

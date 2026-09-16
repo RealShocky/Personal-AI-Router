@@ -32,14 +32,17 @@ func TestWorkerStateTransitions(t *testing.T) {
 
 func TestHeartbeatJSONRoundTrip(t *testing.T) {
 	want := Heartbeat{
-		WorkerID:   "worker-a",
-		NodeID:     "node-a",
-		State:      WorkerReady,
-		Epoch:      7,
-		Runtime:    "llama.cpp",
-		Backends:   []string{"cpu", "cuda"},
-		MemoryFree: 6 << 30,
-		QueueDepth: 2,
+		WorkerID:     "worker-a",
+		NodeID:       "node-a",
+		State:        WorkerReady,
+		Epoch:        7,
+		Runtime:      "llama.cpp",
+		Backends:     []string{"cpu", "cuda"},
+		MemoryFree:   6 << 30,
+		GPUVramTotal: 8 << 30,
+		GPUVramFree:  6 << 30,
+		GPUCount:     1,
+		QueueDepth:   2,
 	}
 	body, err := json.Marshal(want)
 	if err != nil {

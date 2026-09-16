@@ -29,7 +29,8 @@ The Windows Electron dashboard is the operator console. Open the normal PAIR
 window and go to the Overview/node list. The **Distributed inference fabric**
 card refreshes every five seconds and lists each worker's state, runtime,
 backends, free host memory, heartbeat probe latency, checkpoint support, jobs,
-and executions. The regular node cards remain the engine/model view; the fabric
+GPU count, free/total VRAM when NVIDIA telemetry is available, and executions.
+The regular node cards remain the engine/model view; the fabric
 card is the compute-plane view. A worker showing `ready` means authenticated
 and admitted for scheduling, not that a model is currently loaded.
 

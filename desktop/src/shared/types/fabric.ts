@@ -13,6 +13,9 @@ export interface FabricWorker {
     checkpointSupport: boolean
     probeLatencyMillis: number
     memoryFree: number
+    gpuVramTotal: number
+    gpuVramFree: number
+    gpuCount: number
 }
 
 export interface FabricJob {

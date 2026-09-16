@@ -107,7 +107,10 @@ function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
                   modelDigests: stringArray(obj?.modelDigests),
                   checkpointSupport: booleanValue(obj?.checkpointSupport),
                   probeLatencyMillis: numberValue(obj?.probeLatencyMillis),
-                  memoryFree: numberValue(obj?.memoryFree)
+                  memoryFree: numberValue(obj?.memoryFree),
+                  gpuVramTotal: numberValue(obj?.gpuVramTotalBytes),
+                  gpuVramFree: numberValue(obj?.gpuVramFreeBytes),
+                  gpuCount: numberValue(obj?.gpuCount)
               }
           })
         : []

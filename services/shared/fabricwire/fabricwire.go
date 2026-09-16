@@ -51,6 +51,9 @@ type Heartbeat struct {
 	Runtime            string      `json:"runtime"`
 	Backends           []string    `json:"backends"`
 	MemoryFree         uint64      `json:"memoryFreeBytes"`
+	GPUVramTotal       uint64      `json:"gpuVramTotalBytes,omitempty"`
+	GPUVramFree        uint64      `json:"gpuVramFreeBytes,omitempty"`
+	GPUCount           uint32      `json:"gpuCount,omitempty"`
 	QueueDepth         uint32      `json:"queueDepth"`
 	ModelDigests       []string    `json:"modelDigests,omitempty"`
 	CheckpointSupport  bool        `json:"checkpointSupport,omitempty"`
