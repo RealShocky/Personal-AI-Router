@@ -59,6 +59,13 @@ request out to every listed rank concurrently. If one rank fails to start, it
 stops the ranks that did start and returns an error; it never leaves a partial
 training world running.
 
+For coordinator-launched inference, `modelDigest` identifies the model in the
+execution plan but is not a requirement that every worker advertise a local
+copy. The coordinator owns the model path and llama.cpp's RPC layer streams
+the required model data to selected workers. Exact local model-digest matching
+continues to apply to distributed training, where every rank must load the
+same training artifact.
+
 The coordinator also exposes the inference control endpoints
 `POST /v1/fabric/inference/start`, `GET /v1/fabric/inference/status?jobId=...`,
 and `POST /v1/fabric/inference/stop?jobId=...`. They require the same pinned

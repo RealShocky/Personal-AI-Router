@@ -14,7 +14,14 @@ import (
 // both call this function so they cannot drift in planning, persistence, or
 // execution behavior.
 func startInferenceJob(mgr *Manager, jobs *JobStore, executions *ExecutionManager, request StartRequest) (Execution, error) {
-	group, err := mgr.PlanGroup(request.Group)
+	// Inference workers receive the model through the execution plan. They do
+	// not need to keep a second local model copy just to join the group. Keep
+	// the digest on the execution plan for identity and safety, but do not use
+	// it as a local-cache admission filter here. Training keeps exact digest
+	// matching because every rank must load the same local training model.
+	groupRequest := request.Group
+	groupRequest.ModelDigest = ""
+	group, err := mgr.PlanGroup(groupRequest)
 	if err != nil {
 		return Execution{}, err
 	}

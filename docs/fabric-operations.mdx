@@ -117,7 +117,11 @@ response bodies in this status view.
 
 The model path is local to the coordinator because llama.cpp streams the
 selected tensors to RPC workers; workers do not need a second copy for this
-inference path. Training has separate per-node path requirements.
+inference path. The required `modelDigest` is still recorded in the plan so
+all participants agree on model identity, but it does not filter out a worker
+whose heartbeat has no local model inventory. Training has separate per-node
+path and exact-digest requirements because each rank loads the artifact
+locally.
 
 The RPC connection is a live byte stream, not a REST request. A successful
 heartbeat or `rpcSupport:true` means that the worker's local RPC port answered

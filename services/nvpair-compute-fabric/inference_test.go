@@ -57,3 +57,42 @@ func TestStartInferenceJobPlansAndPersists(t *testing.T) {
 		t.Fatal("inference job was not persisted")
 	}
 }
+
+func TestStartInferenceJobAdmitsWorkersWithoutLocalModelCopy(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mgr := NewManager(time.Second)
+	mgr.AcceptHeartbeat(fabricwire.Heartbeat{
+		WorkerID: "cuda-remote",
+		NodeID:   "remote-host",
+		State:    fabricwire.WorkerReady,
+		Epoch:    1,
+		Runtime:  "llama.cpp",
+		Backends: []string{"cuda"},
+		MemoryFree: 1,
+	}, time.Now())
+
+	executions := NewExecutionManager(ctx, "")
+	executions.command = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "go", "version")
+	}
+	jobs := NewJobStore("")
+	request := StartRequest{
+		JobID:       "remote-model-job",
+		ModelDigest: "sha256:coordinator-model",
+		ServerPath:  "llama-server",
+		ModelPath:   "model.gguf",
+		HTTPPort:    19091,
+		Group: fabricwire.GroupRequest{
+			GroupID:    "remote-model-job",
+			Runtime:    "llama.cpp",
+			Backends:   []string{"cuda"},
+			WorkerGoal: 1,
+		},
+	}
+
+	if _, err := startInferenceJob(mgr, jobs, executions, request); err != nil {
+		t.Fatalf("startInferenceJob() should admit a remote model copy: %v", err)
+	}
+}
