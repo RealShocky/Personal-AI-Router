@@ -5,8 +5,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os/exec"
 	"reflect"
+	"sync"
 	"strings"
 	"testing"
 	"time"
@@ -163,6 +168,57 @@ func TestValidSlotFilename(t *testing.T) {
 		if got := validSlotFilename(test.name); got != test.valid {
 			t.Errorf("validSlotFilename(%q) = %v, want %v", test.name, got, test.valid)
 		}
+	}
+}
+
+func TestSlotCheckpointRequestsUseJSONBody(t *testing.T) {
+	var mu sync.Mutex
+	requests := make([]string, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", request.Method)
+		}
+		if request.Header.Get("Content-Type") != "application/json" {
+			t.Errorf("content type = %q, want application/json", request.Header.Get("Content-Type"))
+		}
+		var payload map[string]string
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		if payload["filename"] != "checkpoint.slot" {
+			t.Errorf("filename = %q, want checkpoint.slot", payload["filename"])
+		}
+		mu.Lock()
+		requests = append(requests, request.URL.Query().Get("action"))
+		mu.Unlock()
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager := NewExecutionManager(ctx, "")
+	manager.executions["job-slot"] = &runningExecution{execution: Execution{JobID: "job-slot", State: "running", HTTPPort: port}}
+	if err := manager.SaveCheckpoint(fabricwire.Checkpoint{JobID: "job-slot", SlotID: 0, Filename: "checkpoint.slot"}); err != nil {
+		t.Fatalf("save checkpoint: %v", err)
+	}
+
+	restoreDone := make(chan struct{})
+	go func() {
+		restoreSlotCheckpoint(ctx, port, 0, "checkpoint.slot")
+		close(restoreDone)
+	}()
+	select {
+	case <-restoreDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("restore checkpoint did not complete")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(requests) != 2 || requests[0] != "save" || requests[1] != "restore" {
+		t.Fatalf("actions = %v, want [save restore]", requests)
 	}
 }
 
