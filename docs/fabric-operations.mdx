@@ -172,6 +172,43 @@ The task is required for unattended WSL workers that must remain eligible
 during host idle periods. A worker that loses its heartbeat is quarantined;
 when systemd restarts it, a fresh heartbeat epoch automatically re-admits it.
 
+## 6. Distributed training runtime
+
+Training is a separate collective runtime from llama.cpp inference. The
+current adapter launches `torchrun` over static c10d/TCPStore rendezvous and requires every rank to have
+the same trainer, model, dataset, and exact model digest. It does not merge
+VRAM into one device. For a controlled canary, PAIR provides
+`scripts/pair-training-canary.py`.
+
+Install the canary and launcher on WSL:
+
+```bash
+sudo mkdir -p /opt/nvpair/training
+sudo cp pair-training-canary.py /opt/nvpair/training/
+sudo cp pair-torchrun-wsl.sh /opt/nvpair/fabric/torchrun
+sudo chmod 755 /opt/nvpair/fabric/torchrun
+```
+
+On DGX, install `pair-training-canary.py` in the same PAIR-owned directory and
+install `pair-torchrun-dgx.sh` as `/opt/nvpair/fabric/torchrun`. The DGX
+launcher starts a disposable container from the already-present CUDA image,
+mounting only `/opt/nvpair/training`; it does not stop, edit, or enter the
+existing SGLang container. Set `PAIR_TORCHRUN_PATH=/opt/nvpair/fabric/torchrun`
+in each worker's PAIR service environment and restart only the PAIR worker.
+The DGX wrapper exposes all GPUs by default; set its PAIR-owned
+`PAIR_TRAINING_CUDA_VISIBLE_DEVICES` environment variable to an explicit device
+list when isolating a canary.
+
+Use a rendezvous address reachable by every node and run the canary through
+`fabric:training-start` or the authenticated coordinator endpoint
+`POST /v1/fabric/training/start`. A successful result requires every rank to report
+`complete` and a manifest/checkpoint to exist in the PAIR-owned output
+directory. A worker heartbeat or a launched PID is not training proof. WSL2's
+default NAT normally prevents inbound Gloo connections to the WSL address; use
+Windows mirrored networking or a routed network interface for heterogeneous
+WSL-to-Linux training. PAIR does not silently start a collective that cannot
+route its peer addresses.
+
 ### Windows coordinator with a WSL llama-server
 
 If the CUDA-enabled `llama-server` exists only in WSL, enable **Run through

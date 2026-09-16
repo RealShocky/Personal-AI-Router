@@ -99,7 +99,11 @@ func main() {
 		if *clusterDir == "" {
 			log.Printf("fabric HTTP endpoint disabled: no cluster directory")
 		} else {
-			go serveFabricHTTP(ctx, *httpPort, *clusterDir, mgr, *rpcTarget, training, jobs, executions)
+			var coordinatorHTTP *TrainingCoordinator
+			if *coordinatorURL == "" {
+				coordinatorHTTP = trainingCoordinator
+			}
+			go serveFabricHTTP(ctx, *httpPort, *clusterDir, mgr, *rpcTarget, training, coordinatorHTTP, jobs, executions)
 		}
 	}
 	if *rpcServerPath != "" {
@@ -466,14 +470,14 @@ func postFabricRejoin(ctx context.Context, client *http.Client, endpoint, worker
 	return json.NewDecoder(resp.Body).Decode(&result) == nil && result.Rejoined
 }
 
-func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Manager, rpcTarget string, training *TrainingManager, jobs *JobStore, executions *ExecutionManager) {
+func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Manager, rpcTarget string, training *TrainingManager, coordinator *TrainingCoordinator, jobs *JobStore, executions *ExecutionManager) {
 	mesh := clustertrust.Open(clusterDir)
 	go mesh.Watch(ctx, nil)
 	config := mesh.ServerTLSConfig()
 	server := &http.Server{
 		Addr:      fmt.Sprintf("0.0.0.0:%d", port),
 		TLSConfig: config,
-		Handler:   fabricHTTPHandlerWithExecution(mesh, mgr, rpcTarget, training, jobs, executions),
+		Handler:   fabricHTTPHandlerWithCoordinator(mesh, mgr, rpcTarget, training, coordinator, jobs, executions),
 	}
 	listener, err := net.Listen("tcp", server.Addr)
 	if err != nil {
@@ -503,6 +507,10 @@ func fabricHTTPHandlerWithTraining(mesh *clustertrust.Mesh, mgr *Manager, rpcTar
 }
 
 func fabricHTTPHandlerWithExecution(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string, training *TrainingManager, jobs *JobStore, executions *ExecutionManager) http.Handler {
+	return fabricHTTPHandlerWithCoordinator(mesh, mgr, rpcTarget, training, nil, jobs, executions)
+}
+
+func fabricHTTPHandlerWithCoordinator(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string, training *TrainingManager, coordinator *TrainingCoordinator, jobs *JobStore, executions *ExecutionManager) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/fabric/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -641,7 +649,7 @@ func fabricHTTPHandlerWithExecution(mesh *clustertrust.Mesh, mgr *Manager, rpcTa
 		}
 		writeJSON(w, map[string]bool{"rejoined": mgr.Rejoin(params.WorkerID, params.Epoch, time.Now())})
 	})
-	if training != nil {
+	if training != nil && coordinator == nil {
 		mux.HandleFunc("/v1/fabric/training/start", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -694,6 +702,69 @@ func fabricHTTPHandlerWithExecution(mesh *clustertrust.Mesh, mgr *Manager, rpcTa
 			}
 			jobID := r.URL.Query().Get("jobId")
 			if err := training.Stop(jobID); err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			writeJSON(w, map[string]bool{"stopped": true})
+		})
+	}
+	if coordinator != nil {
+		mux.HandleFunc("/v1/fabric/training/start", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if _, ok := mesh.VerifyClientPin(r); !ok {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			var request TrainingRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				http.Error(w, "invalid training request", http.StatusBadRequest)
+				return
+			}
+			if err := mgr.ValidateTrainingPlacement(request); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			executions, err := coordinator.StartGroup(r.Context(), request)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, executions)
+		})
+		mux.HandleFunc("/v1/fabric/training/status", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if _, ok := mesh.VerifyClientPin(r); !ok {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			jobID := r.URL.Query().Get("jobId")
+			if err := coordinator.RefreshStatus(r.Context(), jobID); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			status, ok := coordinator.StatusGroup(jobID)
+			if !ok {
+				http.Error(w, "training group not found", http.StatusNotFound)
+				return
+			}
+			writeJSON(w, status)
+		})
+		mux.HandleFunc("/v1/fabric/training/stop", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if _, ok := mesh.VerifyClientPin(r); !ok {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			if err := coordinator.StopGroup(r.Context(), r.URL.Query().Get("jobId")); err != nil {
 				http.Error(w, err.Error(), http.StatusNotFound)
 				return
 			}

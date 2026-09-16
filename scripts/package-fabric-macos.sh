@@ -11,6 +11,7 @@ command -v zip >/dev/null || { echo "zip is required" >&2; exit 1; }
 STAGE="$OUT/fabric-macos-$(uname -m)"; ZIPFILE="$STAGE.zip"
 rm -rf "$STAGE" "$ZIPFILE"; mkdir -p "$STAGE"
 cp "$BINARY" "$STAGE/nvpair-compute-fabric"; cp "$ROOT/scripts/install-fabric-worker-macos.sh" "$STAGE/"
+cp "$ROOT/scripts/pair-training-canary.py" "$STAGE/"
 cp "$ROOT/docs/distributed-fabric.mdx" "$STAGE/"
 cp "$ROOT/docs/fabric-operations.mdx" "$STAGE/"
 cp "$ROOT/docs/README.md" "$STAGE/PAIR-documentation.md"

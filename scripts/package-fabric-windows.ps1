@@ -22,6 +22,9 @@ Copy-Item $Binary (Join-Path $stage 'nvpair-compute-fabric.exe')
 Copy-Item (Join-Path $PSScriptRoot 'run-fabric-worker.ps1') $stage
 Copy-Item (Join-Path $PSScriptRoot 'install-fabric-worker-windows.ps1') $stage
 Copy-Item (Join-Path $PSScriptRoot 'keepalive-wsl-worker.ps1') $stage
+Copy-Item (Join-Path $PSScriptRoot 'pair-training-canary.py') $stage
+Copy-Item (Join-Path $PSScriptRoot 'pair-torchrun-wsl.sh') $stage
+Copy-Item (Join-Path $PSScriptRoot 'pair-torchrun-dgx.sh') $stage
 Copy-Item (Join-Path $root 'docs\distributed-fabric.mdx') (Join-Path $stage 'distributed-fabric.mdx')
 Copy-Item (Join-Path $root 'docs\fabric-operations.mdx') (Join-Path $stage 'fabric-operations.mdx')
 Copy-Item (Join-Path $root 'docs\README.md') (Join-Path $stage 'PAIR-documentation.md')

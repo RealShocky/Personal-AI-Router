@@ -35,9 +35,26 @@ func TestTorchRunTrainingCommandUsesRendezvousAndRank(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build command: %v", err)
 	}
-	want := []string{"torchrun", "--nnodes", "2", "--nproc-per-node", "2", "--node-rank", "1", "--rdzv-backend", "c10d", "--rdzv-endpoint", "10.0.0.1:29400", "train.py", "--model", "model.safetensors", "--dataset", "data.jsonl", "--output-dir", "checkpoints", "--parallelism", "fsdp", "--checkpoint-interval-steps", "100", "--model-digest", "sha256:model"}
+	want := []string{"torchrun", "--nnodes", "2", "--nproc-per-node", "2", "--node-rank", "1", "--master-addr", "10.0.0.1", "--master-port", "29400", "train.py", "--model", "model.safetensors", "--dataset", "data.jsonl", "--output-dir", "checkpoints", "--parallelism", "fsdp", "--checkpoint-interval-steps", "100", "--model-digest", "sha256:model"}
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("args = %#v, want %#v", args, want)
+	}
+}
+
+func TestTorchRunTrainingCommandUsesConfiguredLauncher(t *testing.T) {
+	t.Setenv("PAIR_TORCHRUN_PATH", "/opt/nvpair/fabric/torchrun")
+	request := TrainingRequest{
+		JobID: "train-launcher", ModelDigest: "sha256:model", TrainerPath: "train.py", ModelPath: "model.safetensors",
+		DatasetPath: "data.jsonl", CheckpointDirectory: "checkpoints", RendezvousEndpoint: "10.0.0.1:29400",
+		Parallelism: TrainingDataParallel, ProcessesPerNode: 1, CheckpointIntervalSteps: 10,
+		Nodes: []TrainingNode{{WorkerID: "cpu", Address: "10.0.0.2", Backend: "cpu"}},
+	}
+	args, err := BuildTorchRunCommand(request, 0)
+	if err != nil {
+		t.Fatalf("build command: %v", err)
+	}
+	if args[0] != "/opt/nvpair/fabric/torchrun" {
+		t.Fatalf("launcher = %q", args[0])
 	}
 }
 

@@ -41,8 +41,8 @@ over its broker JSON-RPC surface: `fabric:plan-group`, `fabric:job-submit`,
 epoch and are persisted under the broker's per-user `fabric/` state directory.
 
 The training adapter exposes `fabric:build-training-command`. It validates a
-`TrainingRequest` and builds a `torchrun` command using the c10d rendezvous
-protocol, node rank, FSDP or data parallelism, model digest, dataset, and
+`TrainingRequest` and builds a `torchrun` command using static c10d/TCPStore
+rendezvous, explicit node rank, FSDP or data parallelism, model digest, dataset, and
 checkpoint arguments. The current adapter admits homogeneous CPU or CUDA
 worlds. Metal and mixed-backend training are rejected until a collective
 runtime with those semantics is installed and probed; Metal remains available
@@ -52,7 +52,10 @@ Worker-mode HTTP endpoints `/v1/fabric/training/start`,
 `/v1/fabric/training/status`, and `/v1/fabric/training/stop` supervise the
 validated `torchrun` process over the same pinned mTLS fabric. The endpoint
 does not execute a caller-provided shell string: the service constructs the
-argument vector and invokes the fixed `torchrun` executable directly.
+argument vector and invokes `torchrun` directly. Set the PAIR-owned
+`PAIR_TORCHRUN_PATH` environment variable when a node needs a wrapper, such
+as a containerized ARM64 launcher on DGX; the wrapper receives the same
+structured argument vector and must not evaluate it through a shell.
 
 The coordinator JSON-RPC method `fabric:training-start` fans a validated
 request out to every listed rank concurrently. If one rank fails to start, it

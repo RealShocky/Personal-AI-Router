@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -551,13 +552,21 @@ func BuildTorchRunCommand(request TrainingRequest, nodeRank uint32) ([]string, e
 	if nodeRank >= uint32(len(request.Nodes)) {
 		return nil, fmt.Errorf("node rank %d is outside the training world", nodeRank)
 	}
+	masterHost, masterPort, err := net.SplitHostPort(request.RendezvousEndpoint)
+	if err != nil || masterHost == "" || masterPort == "" {
+		return nil, fmt.Errorf("rendezvousEndpoint must be host:port")
+	}
+	launcher := os.Getenv("PAIR_TORCHRUN_PATH")
+	if launcher == "" {
+		launcher = "torchrun"
+	}
 	args := []string{
-		"torchrun",
+		launcher,
 		"--nnodes", strconv.Itoa(len(request.Nodes)),
 		"--nproc-per-node", strconv.FormatUint(uint64(request.ProcessesPerNode), 10),
 		"--node-rank", strconv.FormatUint(uint64(nodeRank), 10),
-		"--rdzv-backend", "c10d",
-		"--rdzv-endpoint", request.RendezvousEndpoint,
+		"--master-addr", masterHost,
+		"--master-port", masterPort,
 		request.TrainerPath,
 		"--model", request.ModelPath,
 		"--dataset", request.DatasetPath,
