@@ -17,6 +17,7 @@ type LogicalDeviceManager struct {
 	workers  *Manager
 	plans    map[string]fabricwire.LogicalDevicePlan
 	requests map[string]fabricwire.LogicalDevicePlan
+	states   map[string]fabricwire.LogicalDeviceState
 }
 
 func NewLogicalDeviceManager(workers *Manager) *LogicalDeviceManager {
@@ -24,7 +25,55 @@ func NewLogicalDeviceManager(workers *Manager) *LogicalDeviceManager {
 		workers:  workers,
 		plans:    make(map[string]fabricwire.LogicalDevicePlan),
 		requests: make(map[string]fabricwire.LogicalDevicePlan),
+		states:   make(map[string]fabricwire.LogicalDeviceState),
 	}
+}
+
+func (m *LogicalDeviceManager) Describe() fabricwire.LogicalDeviceDescribe {
+	describe := fabricwire.LogicalDeviceDescribe{
+		ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion,
+		WorkerID:        "coordinator",
+		Providers:       make([]fabricwire.ProviderCapability, 0),
+	}
+	workers := m.workers.Workers()
+	sort.Slice(workers, func(i, j int) bool {
+		return workers[i].Heartbeat.WorkerID < workers[j].Heartbeat.WorkerID
+	})
+	for _, worker := range workers {
+		for _, backend := range worker.Heartbeat.Backends {
+			provider := fabricwire.Provider(backend)
+			if provider != fabricwire.ProviderCPU && provider != fabricwire.ProviderCUDA && provider != fabricwire.ProviderMetal {
+				continue
+			}
+			tiers := []fabricwire.MemoryTier{{TierID: "host", Kind: fabricwire.MemoryTierHost, CapacityBytes: worker.Heartbeat.MemoryFree, FreeBytes: worker.Heartbeat.MemoryFree, Local: true}}
+			if provider == fabricwire.ProviderCUDA || provider == fabricwire.ProviderMetal {
+				tiers = append(tiers, fabricwire.MemoryTier{TierID: "gpu", Kind: fabricwire.MemoryTierGPU, CapacityBytes: worker.Heartbeat.GPUVramTotal, FreeBytes: worker.Heartbeat.GPUVramFree, Local: true})
+			}
+			describe.Providers = append(describe.Providers, fabricwire.ProviderCapability{
+				Provider: provider, DeviceID: worker.Heartbeat.WorkerID, SupportsExecution: worker.State == fabricwire.WorkerReady,
+				MemoryTiers: tiers,
+			})
+		}
+	}
+	return describe
+}
+
+func (m *LogicalDeviceManager) Status(planID string) (fabricwire.LogicalDeviceStatus, bool) {
+	m.mu.RLock()
+	plan, ok := m.plans[planID]
+	state := m.states[planID]
+	m.mu.RUnlock()
+	if !ok {
+		return fabricwire.LogicalDeviceStatus{}, false
+	}
+	if state == "" {
+		state = fabricwire.LogicalDevicePlanned
+	}
+	workers := make([]string, 0, len(plan.Workers))
+	for _, worker := range plan.Workers {
+		workers = append(workers, worker.WorkerID)
+	}
+	return fabricwire.LogicalDeviceStatus{PlanID: plan.PlanID, Epoch: plan.Epoch, State: state, Workers: workers, Pages: append([]fabricwire.PagePlacement(nil), plan.Pages...), UpdatedAtMS: time.Now().UnixMilli()}, true
 }
 
 func (m *LogicalDeviceManager) Plan(request fabricwire.LogicalDevicePlanRequest) (fabricwire.LogicalDevicePlan, error) {
@@ -117,6 +166,7 @@ func (m *LogicalDeviceManager) Plan(request fabricwire.LogicalDevicePlanRequest)
 	}
 	m.requests[request.RequestID] = plan
 	m.plans[plan.PlanID] = plan
+	m.states[plan.PlanID] = fabricwire.LogicalDevicePlanned
 	m.mu.Unlock()
 	return plan, nil
 }

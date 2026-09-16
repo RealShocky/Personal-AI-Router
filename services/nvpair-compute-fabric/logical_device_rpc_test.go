@@ -53,3 +53,42 @@ func TestLogicalDevicePlanRPCReturnsPlan(t *testing.T) {
 		t.Fatalf("RPC plan = %#v", plan)
 	}
 }
+
+func TestLogicalDeviceStatusRPCReturnsAuthoritativeState(t *testing.T) {
+	workers := NewManager(time.Minute)
+	workers.AcceptHeartbeat(fabricwire.Heartbeat{
+		WorkerID: "cpu-a", NodeID: "host-a", Epoch: 1, State: fabricwire.WorkerReady,
+		Runtime: "pair", Backends: []string{"cpu"}, MemoryFree: 8 << 30,
+	}, time.Now())
+	logical := NewLogicalDeviceManager(workers)
+	plan, err := logical.Plan(fabricwire.LogicalDevicePlanRequest{
+		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "rpc-status-plan"},
+		Runtime:              "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
+		Providers: []fabricwire.Provider{fabricwire.ProviderCPU}, WorkerGoal: 1,
+		Pages: []fabricwire.PageSpec{{PageID: "page-1", Bytes: 1024}},
+	})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	params, err := json.Marshal(map[string]any{"planId": plan.PlanID})
+	if err != nil {
+		t.Fatalf("marshal status request: %v", err)
+	}
+	id := json.RawMessage(`2`)
+	var output bytes.Buffer
+	handleMessage(NewCodec(&output), workers, nil, nil, nil, logical, context.CancelFunc(func() {}), &Message{JSONRPC: "2.0", ID: &id, Method: "fabric:logical-device-status", Params: params})
+	var response Message
+	if err := json.Unmarshal(output.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Error != nil {
+		t.Fatalf("RPC returned error: %#v", response.Error)
+	}
+	var status fabricwire.LogicalDeviceStatus
+	if err := json.Unmarshal(response.Result, &status); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if status.PlanID != plan.PlanID || status.State != fabricwire.LogicalDevicePlanned {
+		t.Fatalf("RPC status = %#v", status)
+	}
+}

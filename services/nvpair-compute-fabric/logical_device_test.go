@@ -69,3 +69,39 @@ func TestLogicalDeviceManagerRejectsUnhealthyWorker(t *testing.T) {
 		t.Fatal("Plan() accepted a worker that missed its health deadline")
 	}
 }
+
+func TestLogicalDeviceManagerReturnsIdempotentPlanAndStatus(t *testing.T) {
+	now := time.Now()
+	workers := NewManager(time.Minute)
+	workers.AcceptHeartbeat(fabricwire.Heartbeat{
+		WorkerID: "cuda-a", NodeID: "host-a", Epoch: 1, State: fabricwire.WorkerReady,
+		Runtime: "pair", Backends: []string{"cuda"}, MemoryFree: 8 << 30,
+		GPUCount: 1, GPUVramTotal: 12 << 30, GPUVramFree: 10 << 30,
+	}, now)
+	logical := NewLogicalDeviceManager(workers)
+	request := fabricwire.LogicalDevicePlanRequest{
+		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "status-request-1"},
+		Runtime:              "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
+		Providers: []fabricwire.Provider{fabricwire.ProviderCUDA}, WorkerGoal: 1,
+		Pages: []fabricwire.PageSpec{{PageID: "page-1", Bytes: 1024}},
+	}
+	first, err := logical.Plan(request)
+	if err != nil {
+		t.Fatalf("first Plan() error = %v", err)
+	}
+	second, err := logical.Plan(request)
+	if err != nil {
+		t.Fatalf("idempotent Plan() error = %v", err)
+	}
+	if first.PlanID != second.PlanID || first.Epoch != second.Epoch {
+		t.Fatalf("idempotent plans differ: first=%#v second=%#v", first, second)
+	}
+	status, ok := logical.Status(first.PlanID)
+	if !ok || status.State != fabricwire.LogicalDevicePlanned || status.Epoch != first.Epoch {
+		t.Fatalf("Status() = %#v, %v", status, ok)
+	}
+	describe := logical.Describe()
+	if len(describe.Providers) != 1 || describe.Providers[0].Provider != fabricwire.ProviderCUDA {
+		t.Fatalf("Describe() = %#v", describe)
+	}
+}

@@ -1073,6 +1073,30 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		_ = codec.Respond(msg.ID, plan)
+	case "fabric:logical-device-describe":
+		if logicalDevice == nil {
+			_ = codec.RespondError(msg.ID, -32001, "logical device manager unavailable")
+			return
+		}
+		_ = codec.Respond(msg.ID, logicalDevice.Describe())
+	case "fabric:logical-device-status":
+		if logicalDevice == nil {
+			_ = codec.RespondError(msg.ID, -32001, "logical device manager unavailable")
+			return
+		}
+		var params struct {
+			PlanID string `json:"planId"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil || params.PlanID == "" {
+			_ = codec.RespondError(msg.ID, -32602, "invalid logical device status request")
+			return
+		}
+		status, ok := logicalDevice.Status(params.PlanID)
+		if !ok {
+			_ = codec.RespondError(msg.ID, -32005, "logical device plan not found")
+			return
+		}
+		_ = codec.Respond(msg.ID, status)
 	case "fabric:build-training-command":
 		var params struct {
 			Request  TrainingRequest `json:"request"`
