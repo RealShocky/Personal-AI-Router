@@ -34,6 +34,7 @@ func TestHeartbeatJSONRoundTrip(t *testing.T) {
 	want := Heartbeat{
 		WorkerID:     "worker-a",
 		NodeID:       "node-a",
+		PeerID:       "cluster-peer-a",
 		State:        WorkerReady,
 		Epoch:        7,
 		Runtime:      "llama.cpp",

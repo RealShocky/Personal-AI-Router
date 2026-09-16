@@ -5,6 +5,12 @@ SPDX-License-Identifier: Apache-2.0
 
 # nvpair-compute-fabric
 
+Current worker heartbeats include `peerId`, the node's cluster-certificate
+principal used for exact RPC relay pinning. Older workers may omit it; the
+coordinator temporarily falls back to the display `nodeId` compatibility path
+while still requiring a certificate pinned in the current cluster. New worker
+installations advertise the explicit principal automatically.
+
 This module contains the coordinator and worker heartbeat implementation for
 PAIR's distributed compute fabric. The Windows broker supervises it as an
 optional worker and restarts it if it exits. The current milestone validates

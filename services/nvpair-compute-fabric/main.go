@@ -216,6 +216,7 @@ func runWorkerHeartbeats(ctx context.Context, coordinatorURL, clusterDir, worker
 			heartbeat := fabricwire.Heartbeat{
 				WorkerID:           workerID,
 				NodeID:             nodeID,
+				PeerID:             mesh.NodeUUID(),
 				Endpoint:           endpoint,
 				State:              state,
 				Epoch:              epoch,

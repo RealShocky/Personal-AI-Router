@@ -45,6 +45,7 @@ func CanTransition(from, to WorkerState) bool {
 type Heartbeat struct {
 	WorkerID           string      `json:"workerId"`
 	NodeID             string      `json:"nodeId"`
+	PeerID             string      `json:"peerId,omitempty"`
 	Endpoint           string      `json:"endpoint,omitempty"`
 	State              WorkerState `json:"state"`
 	Epoch              uint64      `json:"epoch"`

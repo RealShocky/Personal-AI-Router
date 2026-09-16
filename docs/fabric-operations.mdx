@@ -279,6 +279,8 @@ runtime/backends. A ready heartbeat is not proof of inference. Send a small
 OpenAI-compatible completion through the configured llama-server and verify a
 generated response. Inspect service logs for `worker rejoined` after a restart;
 never treat a stale status file as health evidence.
+The heartbeat's `peerId` should be non-empty on current workers; if it is blank,
+upgrade the worker bundle before relying on exact relay identity selection.
 
 ## 5. Failure and recovery
 

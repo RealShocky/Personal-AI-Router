@@ -13,6 +13,7 @@ describe('fabric status parser', () => {
                     Heartbeat: {
                         workerId: 'dgx-spark-gb10',
                         nodeId: 'spark-b57c',
+                        peerId: 'cluster-peer-dgx',
                         endpoint: 'https://192.168.50.223:14324',
                         state: 'ready',
                         runtime: 'cuda',
@@ -30,6 +31,7 @@ describe('fabric status parser', () => {
         expect(status.workers[0]).toMatchObject({
             workerId: 'dgx-spark-gb10',
             nodeId: 'spark-b57c',
+            peerId: 'cluster-peer-dgx',
             endpoint: 'https://192.168.50.223:14324',
             state: 'ready',
             runtime: 'cuda',

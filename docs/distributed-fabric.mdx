@@ -24,6 +24,12 @@ The coordinator does not turn these devices into one operating-system GPU. A
 distributed runtime must explicitly place model layers or tensor work and send
 activations between workers.
 
+Each worker heartbeat carries both a human-facing `nodeId` and the explicit
+cluster certificate principal `peerId`. Placement plans and RPC relays use the
+principal for exact mTLS pinning; `nodeId` remains a display and legacy
+compatibility value. A mixed-version worker that has not yet added `peerId`
+can still be admitted through the existing pinned-certificate fallback.
+
 The coordinator can convert an admitted group into a versioned execution plan
 with `fabric:build-execution-plan`. The plan records the model digest, runtime,
 replicated/tensor/pipeline shard strategy, authenticated transport, worker shard

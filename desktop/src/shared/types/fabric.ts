@@ -6,6 +6,7 @@ export type FabricWorkerState = 'ready' | 'suspect' | 'quarantined' | 'draining'
 export interface FabricWorker {
     workerId: string
     nodeId: string
+    peerId?: string
     endpoint: string
     state: FabricWorkerState
     runtime: string

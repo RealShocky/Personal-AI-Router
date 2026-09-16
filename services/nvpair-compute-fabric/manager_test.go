@@ -140,8 +140,8 @@ func TestManagerAdmissionFiltersGPUVRAMCapacity(t *testing.T) {
 func TestManagerBuildsVersionedExecutionPlanFromLiveWorkers(t *testing.T) {
 	m := NewManager(time.Second)
 	now := time.Unix(100, 0)
-	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "cuda-1", NodeID: "n1", Endpoint: "https://cuda-1/v1/fabric/rpc", State: fabricwire.WorkerReady, Epoch: 1, Runtime: "llama.cpp", Backends: []string{"cuda"}, ModelDigests: []string{"sha256:model"}, CheckpointSupport: true, MemoryFree: 12 << 30, GPUVramFree: 8 << 30}, now)
-	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "cuda-2", NodeID: "n2", Endpoint: "https://cuda-2/v1/fabric/rpc", State: fabricwire.WorkerReady, Epoch: 1, Runtime: "llama.cpp", Backends: []string{"cuda"}, ModelDigests: []string{"sha256:model"}, CheckpointSupport: true, MemoryFree: 16 << 30, GPUVramFree: 10 << 30}, now)
+	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "cuda-1", NodeID: "n1", PeerID: "peer-1", Endpoint: "https://cuda-1/v1/fabric/rpc", State: fabricwire.WorkerReady, Epoch: 1, Runtime: "llama.cpp", Backends: []string{"cuda"}, ModelDigests: []string{"sha256:model"}, CheckpointSupport: true, MemoryFree: 12 << 30, GPUVramFree: 8 << 30}, now)
+	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "cuda-2", NodeID: "n2", PeerID: "peer-2", Endpoint: "https://cuda-2/v1/fabric/rpc", State: fabricwire.WorkerReady, Epoch: 1, Runtime: "llama.cpp", Backends: []string{"cuda"}, ModelDigests: []string{"sha256:model"}, CheckpointSupport: true, MemoryFree: 16 << 30, GPUVramFree: 10 << 30}, now)
 	request := fabricwire.GroupRequest{GroupID: "g-plan", Runtime: "llama.cpp", Backends: []string{"cuda"}, WorkerGoal: 2, ModelDigest: "sha256:model", RequireCheckpoint: true}
 	group, err := m.PlanGroup(request)
 	if err != nil {
@@ -161,7 +161,7 @@ func TestManagerBuildsVersionedExecutionPlanFromLiveWorkers(t *testing.T) {
 	for _, worker := range plan.Workers {
 		peerIDs[worker.WorkerID] = worker.PeerID
 	}
-	if peerIDs["cuda-1"] != "n1" || peerIDs["cuda-2"] != "n2" {
+	if peerIDs["cuda-1"] != "peer-1" || peerIDs["cuda-2"] != "peer-2" {
 		t.Fatalf("execution plan omitted peer identities: %+v", plan.Workers)
 	}
 }

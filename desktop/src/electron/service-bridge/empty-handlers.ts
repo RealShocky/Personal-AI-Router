@@ -147,6 +147,7 @@ export function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
               return {
                   workerId: stringValue(heartbeat?.workerId),
                   nodeId: stringValue(heartbeat?.nodeId),
+                  peerId: stringValue(heartbeat?.peerId),
                   endpoint: stringValue(heartbeat?.endpoint),
                   state: fabricWorkerState(heartbeat?.state ?? obj?.State),
                   runtime: stringValue(heartbeat?.runtime),

@@ -185,8 +185,12 @@ func (m *Manager) PlanGroup(request fabricwire.GroupRequest) (fabricwire.GroupPl
 		if worker.Heartbeat.Endpoint != "" {
 			plan.Endpoints[id] = worker.Heartbeat.Endpoint
 		}
-		if worker.Heartbeat.NodeID != "" {
-			plan.PeerIDs[id] = worker.Heartbeat.NodeID
+		peerID := worker.Heartbeat.PeerID
+		if peerID == "" {
+			peerID = worker.Heartbeat.NodeID
+		}
+		if peerID != "" {
+			plan.PeerIDs[id] = peerID
 		}
 		if uint32(len(plan.Workers)) == request.WorkerGoal {
 			return plan, nil
@@ -220,7 +224,7 @@ func (m *Manager) BuildExecutionPlan(request fabricwire.GroupRequest, group fabr
 		}
 		plan.Workers = append(plan.Workers, fabricwire.WorkerAssignment{
 			WorkerID:           workerID,
-			PeerID:             worker.Heartbeat.NodeID,
+			PeerID:             workerPeerID(worker.Heartbeat),
 			Endpoint:           group.Endpoints[workerID],
 			ShardIndex:         uint32(index),
 			MemoryBudgetBytes:  worker.Heartbeat.MemoryFree,
@@ -231,6 +235,13 @@ func (m *Manager) BuildExecutionPlan(request fabricwire.GroupRequest, group fabr
 		return fabricwire.ExecutionPlan{}, err
 	}
 	return plan, nil
+}
+
+func workerPeerID(heartbeat fabricwire.Heartbeat) string {
+	if heartbeat.PeerID != "" {
+		return heartbeat.PeerID
+	}
+	return heartbeat.NodeID
 }
 
 // runtimeMatches keeps the engine runtime (for example, llama.cpp) separate
