@@ -218,10 +218,17 @@ func openWSLRPCRelay(ctx context.Context, remoteURL, clusterDir, clientHost, pee
 		if err == nil {
 			return relay, nil
 		}
-		if !strings.Contains(strings.ToLower(err.Error()), "address already in use") {
+		if !isAddressInUseError(err) {
 			return nil, err
 		}
 	}
+}
+
+func isAddressInUseError(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "address already in use") ||
+		strings.Contains(message, "only one usage of each socket address") ||
+		strings.Contains(message, "address in use")
 }
 
 func isWSLLauncher(path string) bool {

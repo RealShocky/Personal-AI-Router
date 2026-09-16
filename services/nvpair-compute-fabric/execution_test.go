@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -111,6 +112,12 @@ func TestWSLRelayPortRangeIsDedicated(t *testing.T) {
 	}
 	if _, err := wslRelayListenAddress(1000); err == nil {
 		t.Fatal("WSL relay port overflow was accepted")
+	}
+}
+
+func TestWSLRelayPortCollisionRecognizesWindowsError(t *testing.T) {
+	if !isAddressInUseError(fmt.Errorf("listen tcp 0.0.0.0:52000: Only one usage of each socket address (protocol/network address/port) is normally permitted")) {
+		t.Fatal("Windows address-in-use error was not recognized")
 	}
 }
 
