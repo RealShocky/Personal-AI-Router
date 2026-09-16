@@ -67,12 +67,26 @@ type TrainingStartFunc func(context.Context, TrainingNode, TrainingRequest, uint
 type TrainingStopFunc func(context.Context, string, TrainingNode) error
 
 type TrainingCoordinator struct {
-	start TrainingStartFunc
-	stop  TrainingStopFunc
+	start  TrainingStartFunc
+	stop   TrainingStopFunc
+	mu     sync.Mutex
+	groups map[string]trainingGroup
+}
+
+type trainingGroup struct {
+	request    TrainingRequest
+	state      string
+	executions []TrainingExecution
+}
+
+type TrainingGroupStatus struct {
+	JobID      string              `json:"jobId"`
+	State      string              `json:"state"`
+	Executions []TrainingExecution `json:"executions"`
 }
 
 func NewTrainingCoordinator(start TrainingStartFunc, stop TrainingStopFunc) *TrainingCoordinator {
-	return &TrainingCoordinator{start: start, stop: stop}
+	return &TrainingCoordinator{start: start, stop: stop, groups: make(map[string]trainingGroup)}
 }
 
 func (c *TrainingCoordinator) StartGroup(ctx context.Context, request TrainingRequest) ([]TrainingExecution, error) {
@@ -113,7 +127,51 @@ func (c *TrainingCoordinator) StartGroup(ctx context.Context, request TrainingRe
 	for _, current := range launched {
 		executions[current.rank] = current.execution
 	}
+	c.mu.Lock()
+	c.groups[request.JobID] = trainingGroup{request: request, state: "running", executions: executions}
+	c.mu.Unlock()
 	return executions, nil
+}
+
+func (c *TrainingCoordinator) StatusGroup(jobID string) (TrainingGroupStatus, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	group, ok := c.groups[jobID]
+	if !ok {
+		return TrainingGroupStatus{}, false
+	}
+	return TrainingGroupStatus{JobID: jobID, State: group.state, Executions: append([]TrainingExecution(nil), group.executions...)}, true
+}
+
+func (c *TrainingCoordinator) StopGroup(ctx context.Context, jobID string) error {
+	c.mu.Lock()
+	group, ok := c.groups[jobID]
+	if !ok || group.state != "running" {
+		c.mu.Unlock()
+		return fmt.Errorf("training group is not running")
+	}
+	group.state = "stopping"
+	c.groups[jobID] = group
+	c.mu.Unlock()
+	var firstErr error
+	for _, node := range group.request.Nodes {
+		if err := c.stop(ctx, jobID, node); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	c.mu.Lock()
+	group = c.groups[jobID]
+	if firstErr == nil {
+		group.state = "stopped"
+	} else {
+		group.state = "stop-failed"
+	}
+	c.groups[jobID] = group
+	c.mu.Unlock()
+	if firstErr != nil {
+		return fmt.Errorf("stop distributed training group: %w", firstErr)
+	}
+	return nil
 }
 
 func NewTrainingManager(ctx context.Context) *TrainingManager {

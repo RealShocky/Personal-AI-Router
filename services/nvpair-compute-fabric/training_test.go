@@ -159,3 +159,44 @@ func TestTrainingCoordinatorRollsBackPartialGroupLaunch(t *testing.T) {
 		t.Fatalf("rollback stopped job = %q, want %q", stopped, request.JobID)
 	}
 }
+
+func TestTrainingCoordinatorTracksAndStopsSuccessfulGroup(t *testing.T) {
+	request := TrainingRequest{
+		JobID:                   "train-tracked",
+		ModelDigest:             "sha256:model",
+		TrainerPath:             "train.py",
+		ModelPath:               "model.safetensors",
+		DatasetPath:             "data.jsonl",
+		CheckpointDirectory:     "checkpoints",
+		RendezvousEndpoint:      "10.0.0.1:29400",
+		Parallelism:             TrainingDataParallel,
+		ProcessesPerNode:        1,
+		CheckpointIntervalSteps: 10,
+		Nodes:                   []TrainingNode{{WorkerID: "node-a", Address: "10.0.0.2", Backend: "cpu"}},
+	}
+	coordinator := NewTrainingCoordinator(
+		func(_ context.Context, _ TrainingNode, _ TrainingRequest, rank uint32) (TrainingExecution, error) {
+			return TrainingExecution{JobID: request.JobID, NodeRank: rank, State: "running"}, nil
+		},
+		func(_ context.Context, jobID string, _ TrainingNode) error {
+			if jobID != request.JobID {
+				t.Fatalf("stopped unexpected job %q", jobID)
+			}
+			return nil
+		},
+	)
+	if _, err := coordinator.StartGroup(context.Background(), request); err != nil {
+		t.Fatalf("start group: %v", err)
+	}
+	status, ok := coordinator.StatusGroup(request.JobID)
+	if !ok || status.State != "running" || len(status.Executions) != 1 {
+		t.Fatalf("group status = %+v, found=%v", status, ok)
+	}
+	if err := coordinator.StopGroup(context.Background(), request.JobID); err != nil {
+		t.Fatalf("stop group: %v", err)
+	}
+	status, _ = coordinator.StatusGroup(request.JobID)
+	if status.State != "stopped" {
+		t.Fatalf("group state after stop = %q", status.State)
+	}
+}

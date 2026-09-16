@@ -51,6 +51,10 @@ The coordinator method `fabric:training-start` performs this fan-out across the
 assigned nodes and rolls back partial launches. Later recovery can reuse the
 same request with a new rendezvous and the last verified checkpoint.
 
+The paired `fabric:training-status` and `fabric:training-stop` methods expose
+rank-level state and stop the complete world, preventing an orphaned rank from
+continuing after an operator cancellation.
+
 ## Worker states
 
 Workers move through `discovered`, `authenticated`, `probing`, `ready`,

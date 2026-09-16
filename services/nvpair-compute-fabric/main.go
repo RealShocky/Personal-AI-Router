@@ -793,6 +793,33 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		_ = codec.Respond(msg.ID, executions)
+	case "fabric:training-status":
+		var params struct {
+			JobID string `json:"jobId"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid distributed training status request")
+			return
+		}
+		status, ok := trainingCoordinator.StatusGroup(params.JobID)
+		if !ok {
+			_ = codec.RespondError(msg.ID, -32005, "training group not found")
+			return
+		}
+		_ = codec.Respond(msg.ID, status)
+	case "fabric:training-stop":
+		var params struct {
+			JobID string `json:"jobId"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid distributed training stop request")
+			return
+		}
+		if err := trainingCoordinator.StopGroup(context.Background(), params.JobID); err != nil {
+			_ = codec.RespondError(msg.ID, -32005, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, map[string]bool{"stopped": true})
 	case "fabric:job-start":
 		var request StartRequest
 		if err := json.Unmarshal(msg.Params, &request); err != nil {
