@@ -24,7 +24,7 @@ cp "$ROOT/scripts/configure-nccl-ports.sh" "$STAGE/"
 cp "$ROOT/docs/distributed-fabric.mdx" "$STAGE/"
 cp "$ROOT/docs/fabric-operations.mdx" "$STAGE/"
 cp "$ROOT/docs/README.md" "$STAGE/PAIR-documentation.md"
-cat > "$STAGE/README.txt" <<'EOF'
+cat > "$STAGE/README.txt" <<EOF
 PAIR Fabric portable Linux worker ($ARCH_LABEL)
 Run install-fabric-worker.sh after setting PAIR_* variables. The optional
 nvpair-cluster-manager binary supports first-time pairing on a headless node.
