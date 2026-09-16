@@ -15,6 +15,9 @@ token-map.json
 .tmp/
 /dist/
 
+# Agent planning/specification artifacts are local working notes, not public docs.
+/docs/superpowers/
+
 # Binaries left behind by `go build` without -o inside a tool's module.
 /scripts/collectlogs/collectlogs
 /scripts/inference-dispatcher/inference-dispatcher

@@ -4,7 +4,8 @@ SPDX-License-Identifier: Apache-2.0
 #>
 [CmdletBinding()]
 param(
-    [string]$DgxAddress = '192.168.50.223',
+    [Parameter(Mandatory = $true)]
+    [string]$DgxAddress,
     [string]$DgxUser = 'admin',
     [string]$KeyPath = (Join-Path $env:USERPROFILE '.ssh\id_ed25519'),
     [string]$CoordinatorConfig = (Join-Path (Split-Path -Parent $PSScriptRoot) '.tmp\dgx-pair-coordinator'),

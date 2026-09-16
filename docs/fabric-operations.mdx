@@ -56,7 +56,7 @@ RPC service directly.
 nvpair-compute-fabric.exe --daemon `
   --cluster-dir C:\PAIR\cluster `
   --rpc-relay-listen 0.0.0.0:51006 `
-  --rpc-relay-url https://192.168.50.223:14324/v1/fabric/rpc `
+  --rpc-relay-url https://<worker-address>:14324/v1/fabric/rpc `
   --rpc-relay-peer-id <paired-dgx-node-uuid>
 ```
 
@@ -142,16 +142,15 @@ fresh authenticated heartbeat. If a CUDA llama.cpp build already exists, pass
 its `ggml-rpc-server` through `PAIR_RPC_SERVER_PATH`; the installer supervises
 that helper without changing the source project or its models.
 
-### Lab DGX preflight
+### DGX preflight
 
-The lab inventory identifies the DGX Spark as `192.168.50.223` with SSH user
-`admin`. From the Windows coordinator, validate access before attempting PAIR
-installation:
+Set the DGX address and SSH user for your environment. From the Windows
+coordinator, validate access before attempting PAIR installation:
 
 ```powershell
-ssh admin@192.168.50.223 "hostname; nvidia-smi; docker info"
-Test-NetConnection 192.168.50.223 -Port 14321
-Test-NetConnection 192.168.50.223 -Port 14324
+ssh <dgx-user>@<dgx-address> "hostname; nvidia-smi; docker info"
+Test-NetConnection <dgx-address> -Port 14321
+Test-NetConnection <dgx-address> -Port 14324
 ```
 
 SSH must use the key authorized on the DGX. Do not reuse the AWS key unless it
@@ -161,12 +160,10 @@ Cluster**, and install it with `PAIR_RUNTIME=cuda` / `PAIR_BACKEND=cuda`. The
 DGX should then appear as `ready` in `/v1/fabric/status` and pass a small
 completion test before it is admitted to production jobs.
 
-In the current Windows lab topology, the desktop coordinator is reachable at
-`https://192.168.50.105:14324` and the paired DGX is
-`https://192.168.50.223:14324`. An authenticated status query from the DGX
-reported `spark-b57c` as `ready`, CUDA-backed, with approximately 83 GB of
-currently free host memory. The dashboard reads this coordinator state; it does
-not rely on a hand-maintained status file.
+The desktop coordinator address and DGX worker address are installation-specific.
+Use the authenticated status query in the verification section to confirm that
+the worker is `ready`; the dashboard reads live coordinator state rather than a
+hand-maintained status file.
 
 ### macOS
 
