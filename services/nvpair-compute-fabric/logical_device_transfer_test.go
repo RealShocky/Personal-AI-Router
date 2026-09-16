@@ -47,6 +47,7 @@ func TestLogicalDeviceManagerTransfersAndPublishesPageOwnership(t *testing.T) {
 	workers.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "cpu-a", NodeID: "host-a", Epoch: 1, State: fabricwire.WorkerReady, Runtime: "pair", Backends: []string{"cpu"}, MemoryFree: 8 << 30}, time.Now())
 	workers.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "cpu-b", NodeID: "host-b", Endpoint: server.URL, Epoch: 1, State: fabricwire.WorkerReady, Runtime: "pair", Backends: []string{"cpu"}, MemoryFree: 8 << 30}, time.Now())
 	logical := NewLogicalDeviceManager(workers)
+	logical.SetPageTransferRuntime(store, http.DefaultClient)
 	plan, err := logical.Plan(fabricwire.LogicalDevicePlanRequest{
 		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "transfer-execution-plan"},
 		Runtime:              "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
@@ -60,7 +61,7 @@ func TestLogicalDeviceManagerTransfersAndPublishesPageOwnership(t *testing.T) {
 		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "transfer-execution-1", PlanID: plan.PlanID, Epoch: plan.Epoch},
 		PageID:               "page-1", TargetWorkerID: "cpu-b", TargetTierID: "host", ExpectedDigest: digest,
 	}
-	transfer, err := logical.TransferPage(context.Background(), http.DefaultClient, store, request)
+	transfer, err := logical.TransferPageIfConfigured(context.Background(), request)
 	if err != nil {
 		t.Fatalf("TransferPage() error = %v", err)
 	}
