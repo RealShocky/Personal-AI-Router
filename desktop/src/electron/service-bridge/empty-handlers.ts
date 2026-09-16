@@ -106,20 +106,21 @@ function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
     const workers: FabricWorker[] = Array.isArray(root?.workers)
         ? root.workers.map(item => {
               const obj = objectValue(item)
+              const heartbeat = objectValue(obj?.Heartbeat) ?? obj
               return {
-                  workerId: stringValue(obj?.workerId),
-                  nodeId: stringValue(obj?.nodeId),
-                  endpoint: stringValue(obj?.endpoint),
-                  state: fabricWorkerState(obj?.state),
-                  runtime: stringValue(obj?.runtime),
-                  backends: stringArray(obj?.backends),
-                  modelDigests: stringArray(obj?.modelDigests),
-                  checkpointSupport: booleanValue(obj?.checkpointSupport),
-                  probeLatencyMillis: numberValue(obj?.probeLatencyMillis),
-                  memoryFree: numberValue(obj?.memoryFree),
-                  gpuVramTotal: numberValue(obj?.gpuVramTotalBytes),
-                  gpuVramFree: numberValue(obj?.gpuVramFreeBytes),
-                  gpuCount: numberValue(obj?.gpuCount)
+                  workerId: stringValue(heartbeat?.workerId),
+                  nodeId: stringValue(heartbeat?.nodeId),
+                  endpoint: stringValue(heartbeat?.endpoint),
+                  state: fabricWorkerState(heartbeat?.state ?? obj?.State),
+                  runtime: stringValue(heartbeat?.runtime),
+                  backends: stringArray(heartbeat?.backends),
+                  modelDigests: stringArray(heartbeat?.modelDigests),
+                  checkpointSupport: booleanValue(heartbeat?.checkpointSupport),
+                  probeLatencyMillis: numberValue(heartbeat?.probeLatencyMillis),
+                  memoryFree: numberValue(heartbeat?.memoryFreeBytes ?? heartbeat?.memoryFree),
+                  gpuVramTotal: numberValue(heartbeat?.gpuVramTotalBytes),
+                  gpuVramFree: numberValue(heartbeat?.gpuVramFreeBytes),
+                  gpuCount: numberValue(heartbeat?.gpuCount)
               }
           })
         : []
