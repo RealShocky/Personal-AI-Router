@@ -147,12 +147,12 @@ func main() {
 		}
 	}()
 
-	if err := codec.Notify("ready", map[string]string{"version": Version}); err != nil {
-		log.Fatalf("failed to announce readiness: %v", err)
-	}
 	if *daemon {
 		<-ctx.Done()
 		return
+	}
+	if err := codec.Notify("ready", map[string]string{"version": Version}); err != nil {
+		log.Fatalf("failed to announce readiness: %v", err)
 	}
 	for ctx.Err() == nil {
 		msg, err := codec.Read()
