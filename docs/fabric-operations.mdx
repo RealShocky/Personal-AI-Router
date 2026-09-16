@@ -46,6 +46,24 @@ GET https://coordinator:15424/v1/fabric/status
 The development smoke coordinator uses `15424`; a normal installation uses the
 fabric service port `14324`. The UI hides this distinction through the broker.
 
+### Logical-device control plane
+
+The dashboard's provider line is backed by the coordinator's logical-device
+description. It reports one entry per advertised CPU, CUDA, or Metal provider
+and its local memory tiers. To create a plan programmatically, call the broker
+method `fabric:logical-device-plan` with protocol version `1`, a unique
+`requestId`, a model digest, a shard strategy, a worker count, and explicit page
+sizes. Use `fabric:logical-device-status` with the returned plan ID to inspect
+the epoch and page owners.
+
+`fabric:logical-device-transfer` admits a page move and returns `queued`.
+Ownership changes only after the provider reports a matching page digest.
+If the plan becomes `degraded`, call `fabric:logical-device-recover` with an
+exact list of ready replacement worker IDs. Recovery creates a new epoch; it is
+not proof of resumed model execution until the provider execution/checkpoint
+path reports success. This distinction prevents the dashboard from presenting
+control-plane intent as transferred VRAM or running inference.
+
 ### WSL2 RPC relay note
 
 When llama.cpp runs inside WSL2 but the RPC worker is on another machine, bind

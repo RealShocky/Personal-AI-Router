@@ -69,12 +69,21 @@ device to arbitrary existing CUDA or Metal applications.
 
 ## Current implementation boundary
 
-The fabric already implements worker capability discovery, authenticated
-RPC-relay execution, replicated/tensor/pipeline plan metadata, distributed
-training checkpoints, and bounded recovery. The next runtime phase is to add a
-logical tensor execution API with explicit page ownership and transfer metrics.
-Until that API is implemented and benchmarked, aggregate capacity in the
-dashboard means schedulable fleet capacity, not a contiguous memory pool.
+The fabric implements worker capability discovery, authenticated RPC-relay
+execution, replicated/tensor/pipeline plan metadata, distributed training
+checkpoints, bounded training recovery, and the first logical-device control
+plane. The coordinator now exposes logical-device capability description,
+planning, status, page-transfer admission, and degraded-plan recovery through
+the `fabric:logical-device-*` methods. Plans carry explicit page owners,
+memory tiers, request IDs, and epochs; a transfer remains queued until a
+matching digest is reported, and recovery creates a newer epoch on ready
+replacement workers.
+
+Provider-level tensor execution and the binary data channel are still the next
+runtime phase. Until those are implemented and benchmarked, a queued transfer
+is control-plane state rather than proof that tensor bytes moved, and aggregate
+capacity in the dashboard means schedulable fleet capacity, not a contiguous
+memory pool.
 
 Sources: [CUDA multi-GPU programming](https://docs.nvidia.com/cuda/cuda-programming-guide/03-advanced/multi-gpu-systems.html),
 [CUDA virtual memory management](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/virtual-memory-management.html),
