@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"reflect"
 	"testing"
@@ -119,4 +120,42 @@ func TestTrainingManagerSupervisesLocalTorchRunProcess(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("training process did not reach terminal state: %+v", started)
+}
+
+func TestTrainingCoordinatorRollsBackPartialGroupLaunch(t *testing.T) {
+	request := TrainingRequest{
+		JobID:                   "train-group",
+		ModelDigest:             "sha256:model",
+		TrainerPath:             "train.py",
+		ModelPath:               "model.safetensors",
+		DatasetPath:             "data.jsonl",
+		CheckpointDirectory:     "checkpoints",
+		RendezvousEndpoint:      "10.0.0.1:29400",
+		Parallelism:             TrainingFSDP,
+		ProcessesPerNode:        1,
+		CheckpointIntervalSteps: 10,
+		Nodes: []TrainingNode{
+			{WorkerID: "node-a", Address: "10.0.0.2", Backend: "cuda", GPUCount: 1},
+			{WorkerID: "node-b", Address: "10.0.0.3", Backend: "cuda", GPUCount: 1},
+		},
+	}
+	stopped := ""
+	coordinator := NewTrainingCoordinator(
+		func(_ context.Context, node TrainingNode, _ TrainingRequest, rank uint32) (TrainingExecution, error) {
+			if node.WorkerID == "node-b" {
+				return TrainingExecution{}, fmt.Errorf("worker unavailable")
+			}
+			return TrainingExecution{JobID: "train-group", NodeRank: rank, State: "running"}, nil
+		},
+		func(_ context.Context, jobID string, _ TrainingNode) error {
+			stopped = jobID
+			return nil
+		},
+	)
+	if _, err := coordinator.StartGroup(context.Background(), request); err == nil {
+		t.Fatal("partial group launch unexpectedly succeeded")
+	}
+	if stopped != request.JobID {
+		t.Fatalf("rollback stopped job = %q, want %q", stopped, request.JobID)
+	}
 }

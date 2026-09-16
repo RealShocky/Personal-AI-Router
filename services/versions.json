@@ -15,7 +15,7 @@
     "nvpair-engine-manager": "0.17.4",
     "nvpair-cluster-manager": "1.1.4",
     "nvpair-job-scheduler": "0.4.1",
-    "nvpair-compute-fabric": "0.3.7",
+    "nvpair-compute-fabric": "0.3.8",
     "nvpair-tui": "0.7.2"
   }
 }

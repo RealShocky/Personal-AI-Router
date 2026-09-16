@@ -30,6 +30,7 @@
 - ⚠️ nvpair-compute-fabric → fabric:reconcile
 - ⚠️ nvpair-compute-fabric → fabric:recover
 - ⚠️ nvpair-compute-fabric → fabric:rejoin
+- ⚠️ nvpair-compute-fabric → fabric:training-start
 - ⚠️ nvpair-engine-manager → engine:describe
 - ⚠️ nvpair-engine-manager → engine:errors
 - ⚠️ nvpair-engine-manager → engine:logs
@@ -124,6 +125,7 @@
 | `fabric:reconcile` | request (we call) | ⚠️ not called |
 | `fabric:recover` | request (we call) | ⚠️ not called |
 | `fabric:rejoin` | request (we call) | ⚠️ not called |
+| `fabric:training-start` | request (we call) | ⚠️ not called |
 
 ## nvpair-engine-manager
 

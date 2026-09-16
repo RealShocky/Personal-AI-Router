@@ -83,6 +83,7 @@ func main() {
 	jobs := NewJobStore(*stateDir)
 	executions := NewExecutionManager(ctx, *clusterDir)
 	training := NewTrainingManager(ctx)
+	trainingCoordinator := newHTTPTrainingCoordinator(*clusterDir, 15*time.Second)
 	codec := NewCodec(transport)
 	if *httpPort != 0 {
 		if *clusterDir == "" {
@@ -162,7 +163,7 @@ func main() {
 			log.Printf("JSON-RPC read error: %v", err)
 			continue
 		}
-		handleMessage(codec, mgr, jobs, executions, cancel, msg)
+		handleMessage(codec, mgr, jobs, executions, trainingCoordinator, cancel, msg)
 	}
 }
 
@@ -275,6 +276,80 @@ func postFabricJSON(ctx context.Context, client *http.Client, endpoint string, v
 		return fmt.Errorf("fabric endpoint returned HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func newHTTPTrainingCoordinator(clusterDir string, timeout time.Duration) *TrainingCoordinator {
+	mesh := clustertrust.Open(clusterDir)
+	start := func(ctx context.Context, node TrainingNode, request TrainingRequest, rank uint32) (TrainingExecution, error) {
+		mesh.Refresh()
+		tlsConfig, ok := mesh.ClientTLSConfigAny()
+		if !ok {
+			return TrainingExecution{}, fmt.Errorf("training trust unavailable for worker %s", node.WorkerID)
+		}
+		client := &http.Client{Timeout: timeout, Transport: &http.Transport{TLSClientConfig: tlsConfig}}
+		endpoint, err := trainingEndpoint(node.Address, "/v1/fabric/training/start")
+		if err != nil {
+			return TrainingExecution{}, err
+		}
+		body, err := json.Marshal(map[string]any{"request": request, "nodeRank": rank})
+		if err != nil {
+			return TrainingExecution{}, err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+		if err != nil {
+			return TrainingExecution{}, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := client.Do(req)
+		if err != nil {
+			return TrainingExecution{}, fmt.Errorf("start worker %s: %w", node.WorkerID, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			return TrainingExecution{}, fmt.Errorf("worker %s returned HTTP %d", node.WorkerID, resp.StatusCode)
+		}
+		var execution TrainingExecution
+		if err := json.NewDecoder(resp.Body).Decode(&execution); err != nil {
+			return TrainingExecution{}, fmt.Errorf("decode worker %s response: %w", node.WorkerID, err)
+		}
+		return execution, nil
+	}
+	stop := func(ctx context.Context, jobID string, node TrainingNode) error {
+		mesh.Refresh()
+		tlsConfig, ok := mesh.ClientTLSConfigAny()
+		if !ok {
+			return fmt.Errorf("training trust unavailable for worker %s", node.WorkerID)
+		}
+		endpoint, err := trainingEndpoint(node.Address, "/v1/fabric/training/stop")
+		if err != nil {
+			return err
+		}
+		endpoint += "?jobId=" + url.QueryEscape(jobID)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := (&http.Client{Timeout: timeout, Transport: &http.Transport{TLSClientConfig: tlsConfig}}).Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			return fmt.Errorf("worker %s returned HTTP %d while stopping", node.WorkerID, resp.StatusCode)
+		}
+		return nil
+	}
+	return NewTrainingCoordinator(start, stop)
+}
+
+func trainingEndpoint(raw, path string) (string, error) {
+	parsed, err := url.Parse(strings.TrimRight(raw, "/"))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return "", fmt.Errorf("training endpoint must be an HTTPS URL")
+	}
+	parsed.Path = path
+	parsed.RawQuery = ""
+	return parsed.String(), nil
 }
 
 func postFabricRejoin(ctx context.Context, client *http.Client, endpoint, workerID string, epoch uint64) bool {
@@ -633,7 +708,7 @@ func writeJSON(w http.ResponseWriter, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *ExecutionManager, cancel context.CancelFunc, msg *Message) {
+func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *ExecutionManager, trainingCoordinator *TrainingCoordinator, cancel context.CancelFunc, msg *Message) {
 	if !msg.IsRequest() {
 		return
 	}
@@ -706,6 +781,18 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		_ = codec.Respond(msg.ID, map[string][]string{"args": args})
+	case "fabric:training-start":
+		var request TrainingRequest
+		if err := json.Unmarshal(msg.Params, &request); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid distributed training request")
+			return
+		}
+		executions, err := trainingCoordinator.StartGroup(context.Background(), request)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32004, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, executions)
 	case "fabric:job-start":
 		var request StartRequest
 		if err := json.Unmarshal(msg.Params, &request); err != nil {

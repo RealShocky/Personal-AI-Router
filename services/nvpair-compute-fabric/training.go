@@ -63,6 +63,59 @@ type TrainingManager struct {
 	command    func(context.Context, string, ...string) *exec.Cmd
 }
 
+type TrainingStartFunc func(context.Context, TrainingNode, TrainingRequest, uint32) (TrainingExecution, error)
+type TrainingStopFunc func(context.Context, string, TrainingNode) error
+
+type TrainingCoordinator struct {
+	start TrainingStartFunc
+	stop  TrainingStopFunc
+}
+
+func NewTrainingCoordinator(start TrainingStartFunc, stop TrainingStopFunc) *TrainingCoordinator {
+	return &TrainingCoordinator{start: start, stop: stop}
+}
+
+func (c *TrainingCoordinator) StartGroup(ctx context.Context, request TrainingRequest) ([]TrainingExecution, error) {
+	if err := request.Validate(); err != nil {
+		return nil, err
+	}
+	type result struct {
+		rank      uint32
+		node      TrainingNode
+		execution TrainingExecution
+		err       error
+	}
+	results := make(chan result, len(request.Nodes))
+	for rank, node := range request.Nodes {
+		go func(rank uint32, node TrainingNode) {
+			execution, err := c.start(ctx, node, request, rank)
+			results <- result{rank: rank, node: node, execution: execution, err: err}
+		}(uint32(rank), node)
+	}
+	launched := make([]result, 0, len(request.Nodes))
+	var firstErr error
+	for range request.Nodes {
+		current := <-results
+		if current.err != nil && firstErr == nil {
+			firstErr = current.err
+		}
+		if current.err == nil {
+			launched = append(launched, current)
+		}
+	}
+	if firstErr != nil {
+		for _, current := range launched {
+			_ = c.stop(ctx, request.JobID, current.node)
+		}
+		return nil, fmt.Errorf("distributed training launch failed: %w", firstErr)
+	}
+	executions := make([]TrainingExecution, len(launched))
+	for _, current := range launched {
+		executions[current.rank] = current.execution
+	}
+	return executions, nil
+}
+
 func NewTrainingManager(ctx context.Context) *TrainingManager {
 	return &TrainingManager{ctx: ctx, executions: make(map[string]*trainingProcess), command: exec.CommandContext}
 }

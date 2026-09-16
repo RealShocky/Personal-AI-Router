@@ -47,6 +47,10 @@ without a shell, allowing the collective runtime to establish its rendezvous.
 This is a real process-supervision path, but a trainer script and compatible
 PyTorch environment must still be installed on every participating node.
 
+The coordinator method `fabric:training-start` performs this fan-out across the
+assigned nodes and rolls back partial launches. Later recovery can reuse the
+same request with a new rendezvous and the last verified checkpoint.
+
 ## Worker states
 
 Workers move through `discovered`, `authenticated`, `probing`, `ready`,
