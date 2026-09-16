@@ -105,6 +105,15 @@ failed and must be inspected or restarted by an operator.
 For several workers, use one process with
 `--rpc-relay-specs "127.0.0.1:51001|https://worker-a:14324/v1/fabric/rpc;127.0.0.1:51002|https://worker-b:14324/v1/fabric/rpc"`
 and pass both local relay addresses in `--llama-rpc`.
+
+Inference status includes an operator-facing lifecycle record. `phase` is
+`starting` until the supervised HTTP `/health` endpoint answers successfully,
+then becomes `serving`; a worker loss changes it to `recovering` while a fresh
+group epoch is planned. Terminal process outcomes are `failed` or `stopped`.
+The record also includes the selected worker IDs, plan epoch, recovery attempt
+count, latest checkpoint stage/file, and an RFC3339 `updatedAt` timestamp. The
+`message` field contains short operational text only; prompt, response,
+credential, and key material are never included.
 The explicit `--rpc-relay-peer-id` form is preferred for a standalone relay when the cluster contains more than one pinned peer.
 
 ## Test

@@ -11,6 +11,8 @@ const EMPTY_STATUS: FabricStatus = { workers: [], capacity: { workers: 0, memory
 function stateLabel(status: FabricStatus): string {
     if (status.workers.some(worker => worker.state === 'quarantined')) return 'DEGRADED'
     if (status.workers.some(worker => worker.state === 'suspect')) return 'RECOVERING'
+    if (status.executions.some(execution => execution.phase === 'recovering')) return 'RECOVERING'
+    if (status.executions.some(execution => execution.phase === 'failed')) return 'JOB FAILED'
     if (status.executions.some(execution => execution.state === 'running')) return 'RUNNING'
     if (status.workers.length > 0) return 'READY'
     return 'WAITING FOR WORKERS'
@@ -77,7 +79,7 @@ export default function FabricStatusCard() {
                 )}
                 {status.executions.length > 0 && (
                     <Text kind="body/regular/sm" className="text-subtle-color">
-                        Executions: {status.executions.map(execution => `${execution.jobId} (${execution.state})`).join(' · ')}
+                        Executions: {status.executions.map(execution => `${execution.jobId} (${execution.phase || execution.state}${execution.workers.length > 0 ? ` on ${execution.workers.join(', ')}` : ''})`).join(' · ')}
                     </Text>
                 )}
             </Stack>

@@ -32,15 +32,24 @@ type StartRequest struct {
 	CheckpointFile            string                  `json:"checkpointFile,omitempty"`
 	CheckpointSlot            int                     `json:"checkpointSlot,omitempty"`
 	CheckpointIntervalSeconds uint64                  `json:"checkpointIntervalSeconds,omitempty"`
+	RecoveryAttempts          uint32                  `json:"-"`
 	Group                     fabricwire.GroupRequest `json:"group"`
 }
 
 type Execution struct {
-	JobID    string `json:"jobId"`
-	PID      int    `json:"pid"`
-	State    string `json:"state"`
-	RPCPeers int    `json:"rpcPeers"`
-	HTTPPort int    `json:"httpPort"`
+	JobID            string   `json:"jobId"`
+	PID              int      `json:"pid"`
+	State            string   `json:"state"`
+	Phase            string   `json:"phase"`
+	Message          string   `json:"message"`
+	Workers          []string `json:"workers"`
+	Epoch            uint64   `json:"epoch"`
+	RecoveryAttempts uint32   `json:"recoveryAttempts"`
+	CheckpointFile   string   `json:"checkpointFile,omitempty"`
+	CheckpointStage  uint32   `json:"checkpointStage,omitempty"`
+	UpdatedAt        string   `json:"updatedAt"`
+	RPCPeers         int      `json:"rpcPeers"`
+	HTTPPort         int      `json:"httpPort"`
 }
 
 type ExecutionManager struct {
@@ -182,12 +191,27 @@ func (m *ExecutionManager) Start(request StartRequest, plan fabricwire.GroupPlan
 		closeRelays(relays)
 		return Execution{}, fmt.Errorf("start llama server: %w", err)
 	}
-	execution := Execution{JobID: request.JobID, PID: cmd.Process.Pid, State: "running", RPCPeers: len(rpcAddresses), HTTPPort: request.HTTPPort}
+	workers := append([]string(nil), plan.Workers...)
+	execution := Execution{
+		JobID:            request.JobID,
+		PID:              cmd.Process.Pid,
+		State:            "running",
+		Phase:            "starting",
+		Message:          "starting inference server",
+		Workers:          workers,
+		Epoch:            plan.Epoch,
+		RecoveryAttempts: request.RecoveryAttempts,
+		CheckpointFile:   request.CheckpointFile,
+		UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
+		RPCPeers:         len(rpcAddresses),
+		HTTPPort:         request.HTTPPort,
+	}
 	running := &runningExecution{execution: execution, cmd: cmd, request: request, group: request.Group, plan: plan, relays: relays}
 	m.mu.Lock()
 	m.executions[request.JobID] = running
 	m.mu.Unlock()
 	go m.wait(request.JobID, running)
+	go m.observeReadiness(request.JobID, running)
 	if request.CheckpointIntervalSeconds > 0 && request.CheckpointFile != "" && request.SlotSavePath != "" {
 		go m.checkpointLoop(running)
 	}
@@ -311,6 +335,10 @@ func (m *ExecutionManager) checkpointLoop(running *runningExecution) {
 				continue
 			}
 			m.mu.Lock()
+			if current, ok := m.executions[running.execution.JobID]; ok && current == running {
+				running.execution.CheckpointStage = checkpoint.Stage
+				running.execution.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+			}
 			sink := m.checkpoint
 			m.mu.Unlock()
 			if sink != nil {
@@ -333,9 +361,86 @@ func (m *ExecutionManager) wait(jobID string, running *runningExecution) {
 		return
 	}
 	running.execution.State = "failed"
+	running.execution.Phase = "failed"
+	running.execution.Message = "inference server exited"
 	if running.stopRequested || m.ctx.Err() != nil {
 		running.execution.State = "stopped"
+		running.execution.Phase = "stopped"
+		running.execution.Message = "inference server stopped"
 	}
+	running.execution.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+}
+
+func (m *ExecutionManager) observeReadiness(jobID string, running *runningExecution) {
+	deadline := time.NewTimer(2 * time.Minute)
+	defer deadline.Stop()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-m.ctx.Done():
+			return
+		case <-deadline.C:
+			return
+		case <-ticker.C:
+			if m.executionHealthy(running.request) {
+				m.setExecutionPhase(jobID, running, "serving", "inference server is serving")
+				return
+			}
+		}
+	}
+}
+
+func (m *ExecutionManager) executionHealthy(request StartRequest) bool {
+	if isWSLLauncher(request.ServerPath) {
+		args := wslHealthProbeArgs(request.ServerPrefixArgs, request.HTTPPort)
+		if len(args) == 0 {
+			return false
+		}
+		ctx, cancel := context.WithTimeout(m.ctx, 2*time.Second)
+		defer cancel()
+		return exec.CommandContext(ctx, request.ServerPath, args...).Run() == nil
+	}
+	ctx, cancel := context.WithTimeout(m.ctx, 2*time.Second)
+	defer cancel()
+	url := fmt.Sprintf("http://127.0.0.1:%d/health", request.HTTPPort)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices
+}
+
+func wslHealthProbeArgs(prefixArgs []string, port int) []string {
+	args := make([]string, 0, 8)
+	for index := 0; index+1 < len(prefixArgs); index++ {
+		if prefixArgs[index] != "-d" && prefixArgs[index] != "--distribution" {
+			continue
+		}
+		args = append(args, prefixArgs[index], prefixArgs[index+1])
+		break
+	}
+	if len(args) == 0 {
+		return nil
+	}
+	return append(args, "--", "curl", "--fail", "--silent", "--output", "/dev/null", fmt.Sprintf("http://127.0.0.1:%d/health", port))
+}
+
+func (m *ExecutionManager) setExecutionPhase(jobID string, running *runningExecution, phase, message string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	current, ok := m.executions[jobID]
+	if !ok || current != running || running.execution.State != "running" {
+		return
+	}
+	running.execution.Phase = phase
+	running.execution.Message = message
+	running.execution.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 }
 
 func (m *ExecutionManager) Stop(jobID string) error {
@@ -396,6 +501,7 @@ func (m *ExecutionManager) RecoverFailed(manager *Manager, jobs *JobStore) {
 	}
 	m.mu.Unlock()
 	for _, running := range candidates {
+		m.setExecutionPhase(running.execution.JobID, running, "recovering", "worker loss detected; selecting replacement workers")
 		group := running.group
 		group.GroupID = fmt.Sprintf("%s-recovery-%d", group.GroupID, running.plan.Epoch)
 		plan, err := manager.PlanGroup(group)
@@ -428,6 +534,9 @@ func (m *ExecutionManager) RecoverFailed(manager *Manager, jobs *JobStore) {
 		running.request.Group = group
 		running.request.CheckpointSlot = checkpoint.SlotID
 		running.request.CheckpointFile = checkpoint.Filename
+		if job, ok := jobs.Job(running.execution.JobID); ok {
+			running.request.RecoveryAttempts = job.RecoveryAttempts
+		}
 		if _, err := m.Start(running.request, plan); err != nil {
 			return
 		}

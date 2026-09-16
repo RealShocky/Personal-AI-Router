@@ -106,6 +106,15 @@ llama.cpp rejects path separators. PAIR writes the configured checkpoint file
 under the supplied `--slot-save-path` directory and sends the filename in the
 JSON request body to `/slots/<slot>?action=save` or `restore`.
 
+The execution line in the card is a live control-plane view. `starting` means
+the supervised process is alive but `/health` has not answered yet;
+`serving` means the HTTP health check succeeded; `recovering` means a worker
+was removed and PAIR is selecting a replacement epoch. The line also shows
+the selected workers, epoch, checkpoint stage, and bounded recovery count.
+`failed` means the process or recovery path needs operator action; `stopped`
+is intentional termination. The dashboard never displays model prompts or
+response bodies in this status view.
+
 The model path is local to the coordinator because llama.cpp streams the
 selected tensors to RPC workers; workers do not need a second copy for this
 inference path. Training has separate per-node path requirements.

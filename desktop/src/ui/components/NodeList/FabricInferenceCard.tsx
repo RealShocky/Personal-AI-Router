@@ -129,7 +129,12 @@ export default function FabricInferenceCard() {
                     <Button kind="primary" color="brand" size="small" onClick={start} disabled={busy || readyRPC < Number(workerGoal)}>Start distributed inference</Button>
                     <Button kind="secondary" size="small" onClick={stop} disabled={busy || execution?.state !== 'running'}>Stop inference</Button>
                 </Flex>
-                {execution && <Text kind="body/regular/sm" className="text-subtle-color">{execution.jobId}: {execution.state} · {execution.rpcPeers} remote RPC peer{execution.rpcPeers === 1 ? '' : 's'} · port {execution.httpPort}</Text>}
+                {execution && <Text kind="body/regular/sm" className={execution.phase === 'recovering' ? 'text-error-color' : 'text-subtle-color'}>
+                    {execution.jobId}: {execution.phase || execution.state} · {execution.message} · {execution.rpcPeers} remote RPC peer{execution.rpcPeers === 1 ? '' : 's'} · epoch {execution.epoch}
+                    {execution.workers.length > 0 ? ` · workers ${execution.workers.join(', ')}` : ''}
+                    {execution.checkpointFile ? ` · checkpoint ${execution.checkpointFile} (stage ${execution.checkpointStage})` : ''}
+                    {execution.recoveryAttempts > 0 ? ` · recovery ${execution.recoveryAttempts}/3` : ''}
+                </Text>}
                 {plan && <Text kind="body/regular/sm" className="text-subtle-color">Admission ready: {plan.workers.join(', ')} · epoch {plan.epoch}</Text>}
                 {error && <Text kind="body/regular/sm" className="text-error-color">{error}</Text>}
             </Stack>

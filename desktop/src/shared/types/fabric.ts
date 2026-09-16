@@ -32,6 +32,14 @@ export interface FabricExecution {
     jobId: string
     pid: number
     state: string
+    phase: string
+    message: string
+    workers: string[]
+    epoch: number
+    recoveryAttempts: number
+    checkpointFile: string
+    checkpointStage: number
+    updatedAt: string
     rpcPeers: number
     httpPort: number
 }

@@ -95,7 +95,21 @@ function fabricWorkerState(value: JsonValue | undefined): FabricWorker['state'] 
 
 function parseFabricExecution(value: JsonValue | undefined): FabricExecution {
     const obj = objectValue(value)
-    return { jobId: stringValue(obj?.jobId), pid: numberValue(obj?.pid), state: stringValue(obj?.state), rpcPeers: numberValue(obj?.rpcPeers), httpPort: numberValue(obj?.httpPort) }
+    return {
+        jobId: stringValue(obj?.jobId),
+        pid: numberValue(obj?.pid),
+        state: stringValue(obj?.state),
+        phase: stringValue(obj?.phase),
+        message: stringValue(obj?.message),
+        workers: stringArray(obj?.workers),
+        epoch: numberValue(obj?.epoch),
+        recoveryAttempts: numberValue(obj?.recoveryAttempts),
+        checkpointFile: stringValue(obj?.checkpointFile),
+        checkpointStage: numberValue(obj?.checkpointStage),
+        updatedAt: stringValue(obj?.updatedAt),
+        rpcPeers: numberValue(obj?.rpcPeers),
+        httpPort: numberValue(obj?.httpPort)
+    }
 }
 
 export function parseFabricGroupPlan(value: JsonValue | undefined): FabricGroupPlan {

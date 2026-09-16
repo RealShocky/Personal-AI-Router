@@ -181,4 +181,16 @@ CONNECT stream and reach the daemon, but the AWS CPU grouped canary did not
 finish model initialization within the validation window; AWS CPU execution
 remains an integration item rather than a production-ready claim.
 
+## Execution observability
+
+Every coordinator-launched inference execution exposes a lifecycle record to
+the dashboard and the pinned status endpoint. It identifies the phase
+(`starting`, `serving`, `recovering`, `failed`, or `stopped`), selected worker
+IDs, plan epoch, recovery attempts, checkpoint progress, and the last update
+time. `serving` is only reported after the supervised llama.cpp HTTP health
+endpoint responds successfully; WSL probes run inside the selected
+distribution without shell evaluation. This is control-plane evidence of
+readiness and placement, not a claim that an in-flight token stream can be
+transparently migrated between machines.
+
 When more than one peer is pinned, configure a relay with the exact destination identity using `--rpc-relay-peer-id <node-uuid>`. This prevents a relay from presenting an arbitrary local cluster certificate to a heterogeneous peer.

@@ -45,6 +45,64 @@ func TestExecutionManagerBuildsDistributedLlamaCommand(t *testing.T) {
 	}
 }
 
+func TestExecutionManagerReportsPlacementLifecycleMetadata(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager := NewExecutionManager(ctx, "")
+	manager.command = func(ctx context.Context, path string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "go", "version")
+	}
+	plan := fabricwire.GroupPlan{
+		GroupID: "group-metadata",
+		Runtime: "llama.cpp",
+		Epoch:   12,
+		Workers: []string{"wsl-5060", "dgx-spark-gb10"},
+	}
+	result, err := manager.Start(StartRequest{
+		JobID:          "job-metadata",
+		ServerPath:     "llama-server",
+		ModelPath:      "model.gguf",
+		HTTPPort:       11451,
+		CheckpointFile: "step-0001.slot",
+	}, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Phase != "starting" || result.Epoch != 12 || result.Message == "" {
+		t.Fatalf("execution lifecycle = %+v", result)
+	}
+	if !reflect.DeepEqual(result.Workers, []string{"wsl-5060", "dgx-spark-gb10"}) {
+		t.Fatalf("execution workers = %v", result.Workers)
+	}
+	if result.CheckpointFile != "step-0001.slot" {
+		t.Fatalf("checkpoint file = %q", result.CheckpointFile)
+	}
+}
+
+func TestExecutionManagerPromotesExecutionToServingAfterHealthCheck(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/health" {
+			t.Fatalf("health path = %q", request.URL.Path)
+		}
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager := NewExecutionManager(ctx, "")
+	running := &runningExecution{
+		execution: Execution{JobID: "job-serving", State: "running", Phase: "starting"},
+		request:   StartRequest{ServerPath: "llama-server", HTTPPort: port},
+	}
+	manager.executions[running.execution.JobID] = running
+	manager.observeReadiness(running.execution.JobID, running)
+	status, ok := manager.Status(running.execution.JobID)
+	if !ok || status.Phase != "serving" || status.Message != "inference server is serving" {
+		t.Fatalf("serving status = %+v, found=%v", status, ok)
+	}
+}
+
 func TestExecutionManagerPrependsStructuredServerArguments(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -100,6 +158,14 @@ func TestParseWSLHostGateway(t *testing.T) {
 	}
 	if got != "172.31.176.1" {
 		t.Fatalf("gateway = %q, want 172.31.176.1", got)
+	}
+}
+
+func TestWSLHealthProbeUsesDistributionWithoutShellEvaluation(t *testing.T) {
+	got := wslHealthProbeArgs([]string{"-d", "Ubuntu", "--", "/opt/llama-server"}, 19119)
+	want := []string{"-d", "Ubuntu", "--", "curl", "--fail", "--silent", "--output", "/dev/null", "http://127.0.0.1:19119/health"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("probe args = %v, want %v", got, want)
 	}
 }
 
