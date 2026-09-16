@@ -168,8 +168,10 @@ The Windows↔WSL RTX 5060 path has passed authenticated heartbeat, CUDA model l
 The live resilience gate has also passed for the DGX PAIR service: after a controlled service stop, the coordinator marked `dgx-spark-gb10` quarantined and reduced capacity to two workers/one GPU; after the service restart, a fresh epoch rejoined it as `ready` and restored three workers/two GPUs. This proves worker quarantine and automatic re-admission. A separate coordinator-launched WSL llama.cpp canary persisted a slot checkpoint, then recovered after its supervised `wsl.exe` child was terminated: the replacement process received a new PID, restored the checkpoint path, reconnected two RPC peers, and served another completion. This proves controlled checkpoint-aware child restart; it does not claim an in-flight token stream is transparently resumable.
 
 The WSL launcher now resolves the WSL host gateway before starting a grouped
-llama.cpp server. Dynamic relays bind on `0.0.0.0` only for that child path and
-advertise the gateway address, so the Linux process can reach a Windows relay.
+llama.cpp server. Dynamic relays bind on `0.0.0.0` only for that child path,
+allocate from PAIR's reserved `52000-52999` TCP range, and advertise the
+gateway address, so the Linux process can reach a Windows relay. The Windows
+installer adds a local-subnet firewall rule for that executable and range.
 Every relay carries the selected worker's pinned node identity. Recovery is
 bounded to three attempts and then records the job as failed. A raw SSH
 comparison against the AWS CPU RPC daemon loaded the test model on both

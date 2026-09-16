@@ -53,9 +53,11 @@ the Windows relay to an address reachable from WSL2, such as `0.0.0.0:51006`,
 and connect to the Windows host address from WSL2. A relay bound only to
 `127.0.0.1` is for Windows-local clients and is not reliably reachable from
 WSL2. PAIR's coordinator-launched WSL path performs this automatically: it
-discovers the WSL default-route gateway, binds the relay on a private
-wildcard listener, and gives the WSL child the gateway address. Keep the relay
-on a trusted/private interface and never expose the raw RPC service directly.
+discovers the WSL default-route gateway, allocates relay listeners from the
+dedicated TCP range `52000-52999`, and gives the WSL child the gateway address.
+The Windows installer opens that range only for the PAIR fabric executable and
+only from the local subnet. Keep the relay on a trusted/private interface and
+never expose the raw RPC service directly.
 
 ```powershell
 nvpair-compute-fabric.exe --daemon `

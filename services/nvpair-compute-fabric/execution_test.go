@@ -102,6 +102,18 @@ func TestParseWSLHostGateway(t *testing.T) {
 	}
 }
 
+func TestWSLRelayPortRangeIsDedicated(t *testing.T) {
+	if got := wslRelayPort(0); got != 52000 {
+		t.Fatalf("first WSL relay port = %d, want 52000", got)
+	}
+	if got := wslRelayPort(999); got != 52999 {
+		t.Fatalf("last WSL relay port = %d, want 52999", got)
+	}
+	if _, err := wslRelayListenAddress(1000); err == nil {
+		t.Fatal("WSL relay port overflow was accepted")
+	}
+}
+
 func TestRPCRelayAddressUsesWSLReachableHost(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

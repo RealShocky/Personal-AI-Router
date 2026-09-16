@@ -63,6 +63,10 @@ type runningExecution struct {
 }
 
 const maxInferenceRecoveryAttempts uint32 = 3
+const (
+	wslRelayPortFirst uint16 = 52000
+	wslRelayPortLast  uint16 = 52999
+)
 
 func NewExecutionManager(ctx context.Context, clusterDir string) *ExecutionManager {
 	return &ExecutionManager{ctx: ctx, cluster: clusterDir, executions: make(map[string]*runningExecution), command: exec.CommandContext}
@@ -142,15 +146,18 @@ func (m *ExecutionManager) Start(request StartRequest, plan fabricwire.GroupPlan
 		}
 	}
 	listenAddr := "127.0.0.1:0"
-	if clientHost != "" {
-		listenAddr = "0.0.0.0:0"
-	}
 	for _, workerID := range plan.Workers {
 		endpoint := plan.Endpoints[workerID]
 		if endpoint == "" {
 			continue
 		}
-		relay, err := openRPCRelayForClient(m.ctx, listenAddr, endpoint, m.cluster, clientHost, plan.PeerIDs[workerID])
+		var relay *rpcRelay
+		var err error
+		if clientHost != "" {
+			relay, err = openWSLRPCRelay(m.ctx, endpoint, m.cluster, clientHost, plan.PeerIDs[workerID])
+		} else {
+			relay, err = openRPCRelayForClient(m.ctx, listenAddr, endpoint, m.cluster, clientHost, plan.PeerIDs[workerID])
+		}
 		if err != nil {
 			closeRelays(relays)
 			return Execution{}, fmt.Errorf("open relay for %s: %w", workerID, err)
@@ -188,6 +195,33 @@ func (m *ExecutionManager) Start(request StartRequest, plan fabricwire.GroupPlan
 		go restoreSlotCheckpoint(m.ctx, request.HTTPPort, request.CheckpointSlot, request.CheckpointFile)
 	}
 	return execution, nil
+}
+
+func wslRelayPort(index int) uint16 {
+	return wslRelayPortFirst + uint16(index)
+}
+
+func wslRelayListenAddress(index int) (string, error) {
+	if index < 0 || wslRelayPort(index) > wslRelayPortLast {
+		return "", fmt.Errorf("WSL relay port index %d is outside %d-%d", index, wslRelayPortFirst, wslRelayPortLast)
+	}
+	return fmt.Sprintf("0.0.0.0:%d", wslRelayPort(index)), nil
+}
+
+func openWSLRPCRelay(ctx context.Context, remoteURL, clusterDir, clientHost, peerID string) (*rpcRelay, error) {
+	for index := 0; ; index++ {
+		listenAddr, err := wslRelayListenAddress(index)
+		if err != nil {
+			return nil, fmt.Errorf("no WSL relay ports available: %w", err)
+		}
+		relay, err := openRPCRelayForClient(ctx, listenAddr, remoteURL, clusterDir, clientHost, peerID)
+		if err == nil {
+			return relay, nil
+		}
+		if !strings.Contains(strings.ToLower(err.Error()), "address already in use") {
+			return nil, err
+		}
+	}
 }
 
 func isWSLLauncher(path string) bool {

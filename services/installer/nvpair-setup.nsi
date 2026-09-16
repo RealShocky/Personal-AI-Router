@@ -263,6 +263,7 @@ Section "Install"
   ; when this node is clustered, but the rule is added unconditionally like the rest.
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NVPAIR Engine Manager Control (TCP 14323)" dir=in action=allow protocol=TCP localport=14323 program="$INSTDIR\bin\nvpair-engine-manager.exe" enable=yes profile=any remoteip=localsubnet'
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NVPAIR Compute Fabric (TCP 14324)" dir=in action=allow protocol=TCP localport=14324 program="$INSTDIR\bin\nvpair-compute-fabric.exe" enable=yes profile=any remoteip=localsubnet'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NVPAIR WSL RPC Relays (TCP 52000-52999)" dir=in action=allow protocol=TCP localport=52000-52999 program="$INSTDIR\bin\nvpair-compute-fabric.exe" enable=yes profile=any remoteip=localsubnet'
 SectionEnd
 
 ;---------------------------------------
@@ -289,6 +290,7 @@ Section "Uninstall"
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NVPAIR Engine Manager (TCP 14322)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NVPAIR Engine Manager Control (TCP 14323)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NVPAIR Compute Fabric (TCP 14324)"'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NVPAIR WSL RPC Relays (TCP 52000-52999)"'
 
   ; Remove files
   Delete "$INSTDIR\bin\ollama-proxy.exe"
