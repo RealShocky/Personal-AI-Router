@@ -68,10 +68,12 @@ type TrainingManager struct {
 
 type TrainingStartFunc func(context.Context, TrainingNode, TrainingRequest, uint32) (TrainingExecution, error)
 type TrainingStopFunc func(context.Context, string, TrainingNode) error
+type TrainingStatusFunc func(context.Context, string, TrainingNode) (TrainingExecution, error)
 
 type TrainingCoordinator struct {
 	start  TrainingStartFunc
 	stop   TrainingStopFunc
+	status TrainingStatusFunc
 	mu     sync.Mutex
 	groups map[string]trainingGroup
 	path   string
@@ -110,6 +112,66 @@ func NewTrainingCoordinator(start TrainingStartFunc, stop TrainingStopFunc, stat
 		coordinator.load()
 	}
 	return coordinator
+}
+
+func (c *TrainingCoordinator) SetStatusFunc(status TrainingStatusFunc) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.status = status
+}
+
+func (c *TrainingCoordinator) RefreshStatus(ctx context.Context, jobID string) error {
+	c.mu.Lock()
+	group, ok := c.groups[jobID]
+	statusFunc := c.status
+	c.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("training group not found")
+	}
+	if statusFunc == nil || group.state != "running" {
+		return nil
+	}
+	type result struct {
+		rank      uint32
+		execution TrainingExecution
+		err       error
+	}
+	results := make(chan result, len(group.request.Nodes))
+	for rank, node := range group.request.Nodes {
+		go func(rank uint32, node TrainingNode) {
+			execution, err := statusFunc(ctx, jobID, node)
+			results <- result{rank: rank, execution: execution, err: err}
+		}(uint32(rank), node)
+	}
+	refreshed := append([]TrainingExecution(nil), group.executions...)
+	failed := false
+	for range group.request.Nodes {
+		current := <-results
+		if current.err != nil {
+			failed = true
+			continue
+		}
+		if current.rank < uint32(len(refreshed)) {
+			refreshed[current.rank] = current.execution
+		}
+		if current.execution.State == "failed" {
+			failed = true
+		}
+	}
+	c.mu.Lock()
+	group, ok = c.groups[jobID]
+	if !ok {
+		c.mu.Unlock()
+		return fmt.Errorf("training group not found")
+	}
+	group.executions = refreshed
+	if failed && group.state == "running" {
+		group.state = "recoverable"
+	}
+	c.groups[jobID] = group
+	err := c.persistLocked()
+	c.mu.Unlock()
+	return err
 }
 
 func (c *TrainingCoordinator) StartGroup(ctx context.Context, request TrainingRequest) ([]TrainingExecution, error) {

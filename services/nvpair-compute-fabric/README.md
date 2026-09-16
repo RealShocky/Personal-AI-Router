@@ -50,7 +50,8 @@ request out to every listed rank concurrently. If one rank fails to start, it
 stops the ranks that did start and returns an error; it never leaves a partial
 training world running.
 
-`fabric:training-status` returns the tracked rank list and group state, while
+`fabric:training-status` refreshes each assigned rank over pinned mTLS before
+returning the rank list and group state, while
 `fabric:training-stop` stops every rank in the group. Group state is held by the
 coordinator and is intentionally separate from the operating-system device
 inventory. `fabric:training-checkpoint` persists a monotonic checkpoint

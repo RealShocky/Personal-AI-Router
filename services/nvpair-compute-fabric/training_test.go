@@ -201,6 +201,41 @@ func TestTrainingCoordinatorTracksAndStopsSuccessfulGroup(t *testing.T) {
 	}
 }
 
+func TestTrainingCoordinatorRefreshesRemoteExecutionState(t *testing.T) {
+	request := TrainingRequest{
+		JobID:                   "train-refresh",
+		ModelDigest:             "sha256:model",
+		TrainerPath:             "train.py",
+		ModelPath:               "model.safetensors",
+		DatasetPath:             "data.jsonl",
+		CheckpointDirectory:     "checkpoints",
+		RendezvousEndpoint:      "127.0.0.1:29400",
+		Parallelism:             TrainingDataParallel,
+		ProcessesPerNode:        1,
+		CheckpointIntervalSteps: 10,
+		Nodes:                   []TrainingNode{{WorkerID: "node-a", Address: "127.0.0.1", Backend: "cpu"}},
+	}
+	coordinator := NewTrainingCoordinator(
+		func(_ context.Context, _ TrainingNode, _ TrainingRequest, rank uint32) (TrainingExecution, error) {
+			return TrainingExecution{JobID: request.JobID, NodeRank: rank, State: "running"}, nil
+		},
+		func(_ context.Context, _ string, _ TrainingNode) error { return nil },
+	)
+	coordinator.SetStatusFunc(func(_ context.Context, jobID string, _ TrainingNode) (TrainingExecution, error) {
+		return TrainingExecution{JobID: jobID, NodeRank: 0, PID: 42, State: "failed"}, nil
+	})
+	if _, err := coordinator.StartGroup(context.Background(), request); err != nil {
+		t.Fatalf("start group: %v", err)
+	}
+	if err := coordinator.RefreshStatus(context.Background(), request.JobID); err != nil {
+		t.Fatalf("refresh status: %v", err)
+	}
+	status, ok := coordinator.StatusGroup(request.JobID)
+	if !ok || status.State != "recoverable" || status.Executions[0].PID != 42 || status.Executions[0].State != "failed" {
+		t.Fatalf("refreshed status = %+v, found=%v", status, ok)
+	}
+}
+
 func TestTrainingCoordinatorPersistsCheckpointAndGroupState(t *testing.T) {
 	stateDir := t.TempDir()
 	request := TrainingRequest{

@@ -339,7 +339,38 @@ func newHTTPTrainingCoordinator(clusterDir, stateDir string, timeout time.Durati
 		}
 		return nil
 	}
-	return NewTrainingCoordinator(start, stop, stateDir)
+	status := func(ctx context.Context, jobID string, node TrainingNode) (TrainingExecution, error) {
+		mesh.Refresh()
+		tlsConfig, ok := mesh.ClientTLSConfigAny()
+		if !ok {
+			return TrainingExecution{}, fmt.Errorf("training trust unavailable for worker %s", node.WorkerID)
+		}
+		endpoint, err := trainingEndpoint(node.Address, "/v1/fabric/training/status")
+		if err != nil {
+			return TrainingExecution{}, err
+		}
+		query := endpoint + "?jobId=" + url.QueryEscape(jobID)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, query, nil)
+		if err != nil {
+			return TrainingExecution{}, err
+		}
+		resp, err := (&http.Client{Timeout: timeout, Transport: &http.Transport{TLSClientConfig: tlsConfig}}).Do(req)
+		if err != nil {
+			return TrainingExecution{}, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			return TrainingExecution{}, fmt.Errorf("worker %s returned HTTP %d while reading status", node.WorkerID, resp.StatusCode)
+		}
+		var execution TrainingExecution
+		if err := json.NewDecoder(resp.Body).Decode(&execution); err != nil {
+			return TrainingExecution{}, fmt.Errorf("decode worker %s status: %w", node.WorkerID, err)
+		}
+		return execution, nil
+	}
+	coordinator := NewTrainingCoordinator(start, stop, stateDir)
+	coordinator.SetStatusFunc(status)
+	return coordinator
 }
 
 func trainingEndpoint(raw, path string) (string, error) {
@@ -801,6 +832,7 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			_ = codec.RespondError(msg.ID, -32602, "invalid distributed training status request")
 			return
 		}
+		_ = trainingCoordinator.RefreshStatus(context.Background(), params.JobID)
 		status, ok := trainingCoordinator.StatusGroup(params.JobID)
 		if !ok {
 			_ = codec.RespondError(msg.ID, -32005, "training group not found")

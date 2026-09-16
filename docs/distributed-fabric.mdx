@@ -53,7 +53,10 @@ same request with a new rendezvous and the last verified checkpoint.
 
 The paired `fabric:training-status` and `fabric:training-stop` methods expose
 rank-level state and stop the complete world, preventing an orphaned rank from
-continuing after an operator cancellation.
+continuing after an operator cancellation. Status refresh queries every
+assigned worker over pinned mTLS before returning the dashboard view; a failed
+rank changes a running group to `recoverable` so the recovery action is based
+on observed worker state rather than a stale launch record.
 
 `fabric:training-recover` accepts replacement workers and a fresh rendezvous,
 restores the last verified checkpoint through the trainer's `--resume` contract,
