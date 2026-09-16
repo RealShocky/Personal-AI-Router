@@ -218,6 +218,20 @@ The DGX wrapper exposes all GPUs by default; set its PAIR-owned
 `PAIR_TRAINING_CUDA_VISIBLE_DEVICES` environment variable to an explicit device
 list when isolating a canary.
 
+NCCL's auxiliary sockets use the Linux kernel ephemeral-port range. Before a
+cross-machine training run, make that range match the PAIR firewall rule on
+each Linux node (the default PAIR range is `29401-29410`):
+
+```bash
+sudo sysctl -w 'net.ipv4.ip_local_port_range=29401 29410'
+```
+
+Persist the setting through the node's normal sysctl configuration if the node
+is dedicated to PAIR. For a larger world, choose a wider PAIR-opened range and
+apply the same range on every participating Linux node; the rendezvous port
+must also be inside the permitted range. PAIR does not change this host-wide
+kernel setting automatically because it affects other workloads.
+
 Use a rendezvous address reachable by every node and run the canary through
 `fabric:training-start` or the authenticated coordinator endpoint
 `POST /v1/fabric/training/start`. A successful result requires every rank to report

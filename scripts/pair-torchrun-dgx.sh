@@ -9,6 +9,9 @@ docker_args=(--rm --gpus all --network host --ipc host)
 if [[ -n "$cuda_visible_devices" && "$cuda_visible_devices" != "all" ]]; then
   docker_args+=( -e "CUDA_VISIBLE_DEVICES=$cuda_visible_devices" )
 fi
+if [[ -n "${PAIR_NCCL_DEBUG-}" ]]; then docker_args+=( -e "NCCL_DEBUG=$PAIR_NCCL_DEBUG" ); fi
+if [[ -n "${PAIR_NCCL_DEBUG_SUBSYS-}" ]]; then docker_args+=( -e "NCCL_DEBUG_SUBSYS=$PAIR_NCCL_DEBUG_SUBSYS" ); fi
+if [[ -n "${PAIR_NCCL_P2P_DISABLE-}" ]]; then docker_args+=( -e "NCCL_P2P_DISABLE=$PAIR_NCCL_P2P_DISABLE" ); fi
 exec docker run "${docker_args[@]}" \
   -e NCCL_SOCKET_IFNAME="$nccl_socket_ifname" \
   -e GLOO_SOCKET_IFNAME="$nccl_socket_ifname" \
