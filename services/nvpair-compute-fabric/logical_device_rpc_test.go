@@ -183,3 +183,51 @@ func TestLogicalDeviceRecoveryRPCReturnsNewEpoch(t *testing.T) {
 		t.Fatalf("RPC recovered plan = %#v", recovered)
 	}
 }
+
+func TestLogicalDeviceTransferCompletionRPCAcceptsVerifiedDigest(t *testing.T) {
+	workers := NewManager(time.Minute)
+	for _, id := range []string{"cpu-a", "cpu-b"} {
+		workers.AcceptHeartbeat(fabricwire.Heartbeat{
+			WorkerID: id, NodeID: id + "-host", Epoch: 1, State: fabricwire.WorkerReady,
+			Runtime: "pair", Backends: []string{"cpu"}, MemoryFree: 8 << 30,
+		}, time.Now())
+	}
+	logical := NewLogicalDeviceManager(workers)
+	plan, err := logical.Plan(fabricwire.LogicalDevicePlanRequest{
+		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "rpc-complete-plan"},
+		Runtime:              "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
+		Providers: []fabricwire.Provider{fabricwire.ProviderCPU}, WorkerGoal: 2,
+		Pages: []fabricwire.PageSpec{{PageID: "page-1", Bytes: 1024}},
+	})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	transfer, err := logical.Transfer(fabricwire.TransferRequest{
+		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "rpc-complete-transfer", PlanID: plan.PlanID, Epoch: plan.Epoch},
+		PageID:               "page-1", TargetWorkerID: "cpu-b", TargetTierID: "host", ExpectedDigest: "sha256:page",
+	})
+	if err != nil {
+		t.Fatalf("Transfer() error = %v", err)
+	}
+	params, err := json.Marshal(map[string]string{"transferId": transfer.TransferID, "digest": "sha256:page"})
+	if err != nil {
+		t.Fatalf("marshal completion request: %v", err)
+	}
+	id := json.RawMessage(`5`)
+	var output bytes.Buffer
+	handleMessage(NewCodec(&output), workers, nil, nil, nil, logical, context.CancelFunc(func() {}), &Message{JSONRPC: "2.0", ID: &id, Method: "fabric:logical-device-transfer-complete", Params: params})
+	var response Message
+	if err := json.Unmarshal(output.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Error != nil {
+		t.Fatalf("RPC returned error: %#v", response.Error)
+	}
+	var completed fabricwire.TransferStatus
+	if err := json.Unmarshal(response.Result, &completed); err != nil {
+		t.Fatalf("decode completion: %v", err)
+	}
+	if completed.State != fabricwire.TransferVerified {
+		t.Fatalf("completion = %#v", completed)
+	}
+}

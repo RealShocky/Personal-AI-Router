@@ -1133,6 +1133,25 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		_ = codec.Respond(msg.ID, plan)
+	case "fabric:logical-device-transfer-complete":
+		if logicalDevice == nil {
+			_ = codec.RespondError(msg.ID, -32001, "logical device manager unavailable")
+			return
+		}
+		var params struct {
+			TransferID string `json:"transferId"`
+			Digest     string `json:"digest"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil || params.TransferID == "" || params.Digest == "" {
+			_ = codec.RespondError(msg.ID, -32602, "invalid logical device transfer completion")
+			return
+		}
+		transfer, err := logicalDevice.CompleteTransfer(params.TransferID, params.Digest)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32001, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, transfer)
 	case "fabric:build-training-command":
 		var params struct {
 			Request  TrainingRequest `json:"request"`

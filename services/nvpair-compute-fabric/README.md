@@ -200,6 +200,12 @@ the replacement set only after those workers are ready. Provider execution and
 checkpoint verification must still complete before the plan is considered
 running.
 
+Provider adapters acknowledge a completed page with
+`fabric:logical-device-transfer-complete`, supplying the transfer ID and the
+destination digest. The coordinator verifies the digest before publishing the
+new owner; this endpoint carries control metadata and never accepts a raw
+provider pointer.
+
 ## Test
 
 ```bash

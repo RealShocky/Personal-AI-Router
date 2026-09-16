@@ -79,6 +79,11 @@ memory tiers, request IDs, and epochs; a transfer remains queued until a
 matching digest is reported, and recovery creates a newer epoch on ready
 replacement workers.
 
+The provider acknowledgment method is
+`fabric:logical-device-transfer-complete`; it accepts only a transfer ID and
+destination digest. The coordinator publishes the destination as owner only
+after that digest matches the admitted transfer.
+
 Provider-level tensor execution and the binary data channel are still the next
 runtime phase. Until those are implemented and benchmarked, a queued transfer
 is control-plane state rather than proof that tensor bytes moved, and aggregate

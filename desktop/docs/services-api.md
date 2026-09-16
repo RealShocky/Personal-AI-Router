@@ -23,6 +23,7 @@
 - ⚠️ nvpair-compute-fabric → fabric:checkpoint
 - ⚠️ nvpair-compute-fabric → fabric:heartbeat
 - ⚠️ nvpair-compute-fabric → fabric:job-submit
+- ⚠️ nvpair-compute-fabric → fabric:logical-device-transfer-complete
 - ⚠️ nvpair-compute-fabric → fabric:reconcile
 - ⚠️ nvpair-compute-fabric → fabric:recover
 - ⚠️ nvpair-compute-fabric → fabric:rejoin
@@ -122,6 +123,7 @@
 | `fabric:logical-device-recover` | request (we call) | ✅ yes |
 | `fabric:logical-device-status` | request (we call) | ✅ yes |
 | `fabric:logical-device-transfer` | request (we call) | ✅ yes |
+| `fabric:logical-device-transfer-complete` | request (we call) | ⚠️ not called |
 | `fabric:plan-group` | request (we call) | ✅ yes |
 | `fabric:reconcile` | request (we call) | ⚠️ not called |
 | `fabric:recover` | request (we call) | ⚠️ not called |
