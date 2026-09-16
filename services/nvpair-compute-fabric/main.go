@@ -627,6 +627,21 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		_ = codec.Respond(msg.ID, plan)
+	case "fabric:build-training-command":
+		var params struct {
+			Request  TrainingRequest `json:"request"`
+			NodeRank uint32          `json:"nodeRank"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid training command request")
+			return
+		}
+		args, err := BuildTorchRunCommand(params.Request, params.NodeRank)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32001, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, map[string][]string{"args": args})
 	case "fabric:job-start":
 		var request StartRequest
 		if err := json.Unmarshal(msg.Params, &request); err != nil {

@@ -30,6 +30,16 @@ replicated/tensor/pipeline shard strategy, authenticated transport, worker shard
 assignments, per-worker host/GPU memory budgets, checkpoint interval, and bounded
 failover policy. Aggregate dashboard capacity alone never authorizes a job.
 
+## Distributed training
+
+PAIR also defines a training-adapter boundary. `fabric:build-training-command`
+generates a `torchrun` command with a c10d rendezvous, stable job identity,
+node rank, FSDP or data-parallel mode, model digest, dataset, and checkpoint
+arguments. The current adapter requires homogeneous CPU or CUDA workers. It
+does not pretend that a Mac Metal worker can join a CUDA collective, and it
+does not turn CPU RAM into VRAM. A future adapter can provide Metal-capable
+collectives or another runtime behind the same plan contract.
+
 ## Worker states
 
 Workers move through `discovered`, `authenticated`, `probing`, `ready`,

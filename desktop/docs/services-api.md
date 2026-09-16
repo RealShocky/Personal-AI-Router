@@ -19,6 +19,7 @@
 - ⚠️ lmstudio-proxy → node/selected
 - ⚠️ lmstudio-proxy → node/set-local-backend
 - ⚠️ nvpair-compute-fabric → fabric:build-execution-plan
+- ⚠️ nvpair-compute-fabric → fabric:build-training-command
 - ⚠️ nvpair-compute-fabric → fabric:checkpoint
 - ⚠️ nvpair-compute-fabric → fabric:heartbeat
 - ⚠️ nvpair-compute-fabric → fabric:job-start
@@ -111,6 +112,7 @@
 |---|---|---|
 | `ready` | notification (we consume) | ✅ yes |
 | `fabric:build-execution-plan` | request (we call) | ⚠️ not called |
+| `fabric:build-training-command` | request (we call) | ⚠️ not called |
 | `fabric:checkpoint` | request (we call) | ⚠️ not called |
 | `fabric:get-status` | request (we call) | ✅ yes |
 | `fabric:heartbeat` | request (we call) | ⚠️ not called |
