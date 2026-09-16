@@ -110,6 +110,28 @@ type LogicalDevicePlan struct {
 	Pages         []PagePlacement    `json:"pages"`
 }
 
+type LogicalDeviceState string
+
+const (
+	LogicalDevicePlanned   LogicalDeviceState = "planned"
+	LogicalDeviceLeased    LogicalDeviceState = "leased"
+	LogicalDeviceRunning   LogicalDeviceState = "running"
+	LogicalDeviceDegraded  LogicalDeviceState = "degraded"
+	LogicalDeviceRecovering LogicalDeviceState = "recovering"
+	LogicalDeviceCompleted LogicalDeviceState = "completed"
+	LogicalDeviceCancelled LogicalDeviceState = "cancelled"
+)
+
+type LogicalDeviceStatus struct {
+	PlanID       string             `json:"planId"`
+	Epoch        uint64             `json:"epoch"`
+	State        LogicalDeviceState `json:"state"`
+	Workers      []string           `json:"workers"`
+	Pages        []PagePlacement    `json:"pages"`
+	TransferIDs  []string           `json:"transferIds,omitempty"`
+	UpdatedAtMS  int64              `json:"updatedAtMs"`
+}
+
 func (p LogicalDevicePlan) Validate() error {
 	if p.Version != LogicalDeviceProtocolVersion {
 		return fmt.Errorf("unsupported logical device plan version %d", p.Version)
