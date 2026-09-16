@@ -171,6 +171,28 @@ func TestManagerAdmissionRequiresAggregateMemoryAndGPUCapacity(t *testing.T) {
 	}
 }
 
+func TestManagerValidatesTrainingPlacementAgainstLiveWorkers(t *testing.T) {
+	m := NewManager(time.Second)
+	now := time.Unix(100, 0)
+	m.AcceptHeartbeat(fabricwire.Heartbeat{
+		WorkerID: "cuda-trainer", NodeID: "n1", Endpoint: "https://trainer:14324",
+		State: fabricwire.WorkerReady, Epoch: 1, Runtime: "cuda", Backends: []string{"cuda"}, GPUCount: 1,
+	}, now)
+	request := TrainingRequest{
+		JobID: "train-live", ModelDigest: "sha256:model", TrainerPath: "train.py", ModelPath: "model.safetensors",
+		DatasetPath: "data.jsonl", CheckpointDirectory: "checkpoints", RendezvousEndpoint: "trainer:29400",
+		Parallelism: TrainingFSDP, ProcessesPerNode: 1, CheckpointIntervalSteps: 10,
+		Nodes: []TrainingNode{{WorkerID: "cuda-trainer", Address: "https://trainer:14324", Backend: "cuda", GPUCount: 1}},
+	}
+	if err := m.ValidateTrainingPlacement(request); err != nil {
+		t.Fatalf("live training placement rejected: %v", err)
+	}
+	request.Nodes[0].Address = "https://stale:14324"
+	if err := m.ValidateTrainingPlacement(request); err == nil || !strings.Contains(err.Error(), "endpoint changed") {
+		t.Fatalf("stale training endpoint error = %v", err)
+	}
+}
+
 func TestManagerBuildsVersionedExecutionPlanFromLiveWorkers(t *testing.T) {
 	m := NewManager(time.Second)
 	now := time.Unix(100, 0)

@@ -987,6 +987,10 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			_ = codec.RespondError(msg.ID, -32602, "invalid distributed training request")
 			return
 		}
+		if err := mgr.ValidateTrainingPlacement(request); err != nil {
+			_ = codec.RespondError(msg.ID, -32004, err.Error())
+			return
+		}
 		executions, err := trainingCoordinator.StartGroup(context.Background(), request)
 		if err != nil {
 			_ = codec.RespondError(msg.ID, -32004, err.Error())

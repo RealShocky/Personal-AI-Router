@@ -137,6 +137,44 @@ func (m *Manager) Assignable(workerID string) bool {
 	return ok && worker.State == fabricwire.WorkerReady
 }
 
+// ValidateTrainingPlacement checks the coordinator's live worker records
+// before a torchrun world is launched. Training ranks are supplied by the
+// caller, but they must still refer to ready workers with the requested
+// backend and advertised endpoint. An empty model inventory means the worker
+// has not implemented model inventory reporting; a non-empty inventory must
+// contain the requested training artifact.
+func (m *Manager) ValidateTrainingPlacement(request TrainingRequest) error {
+	if err := request.Validate(); err != nil {
+		return err
+	}
+	seen := make(map[string]bool, len(request.Nodes))
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, node := range request.Nodes {
+		if seen[node.WorkerID] {
+			return fmt.Errorf("training placement assigns worker %q more than once", node.WorkerID)
+		}
+		seen[node.WorkerID] = true
+		worker, ok := m.workers[node.WorkerID]
+		if !ok || worker.State != fabricwire.WorkerReady {
+			return fmt.Errorf("training worker %q is not ready", node.WorkerID)
+		}
+		if !hasBackend(worker.Heartbeat.Backends, map[string]bool{node.Backend: true}) {
+			return fmt.Errorf("training worker %q does not advertise backend %q", node.WorkerID, node.Backend)
+		}
+		if worker.Heartbeat.Endpoint != "" && node.Address != worker.Heartbeat.Endpoint {
+			return fmt.Errorf("training worker %q endpoint changed", node.WorkerID)
+		}
+		if node.Backend == "cuda" && node.GPUCount > worker.Heartbeat.GPUCount {
+			return fmt.Errorf("training worker %q reports %d GPUs, requested %d", node.WorkerID, worker.Heartbeat.GPUCount, node.GPUCount)
+		}
+		if len(worker.Heartbeat.ModelDigests) > 0 && !hasModelDigest(worker.Heartbeat.ModelDigests, request.ModelDigest) {
+			return fmt.Errorf("training worker %q does not advertise model digest", node.WorkerID)
+		}
+	}
+	return nil
+}
+
 func (m *Manager) PlanGroup(request fabricwire.GroupRequest) (fabricwire.GroupPlan, error) {
 	if request.GroupID == "" || request.Runtime == "" || request.WorkerGoal == 0 {
 		return fabricwire.GroupPlan{}, fmt.Errorf("group requires groupId, runtime, and positive workerGoal")

@@ -59,6 +59,13 @@ request out to every listed rank concurrently. If one rank fails to start, it
 stops the ranks that did start and returns an error; it never leaves a partial
 training world running.
 
+Before that fan-out, the coordinator checks each listed worker against its
+current ready heartbeat, advertised backend, endpoint, and GPU count. When a
+worker reports a non-empty model inventory, the requested model digest must be
+present there as well. This prevents a stale endpoint or incompatible worker
+from entering a collective; an empty model inventory remains an explicitly
+unknown capability rather than a false mismatch.
+
 For coordinator-launched inference, `modelDigest` identifies the model in the
 execution plan but is not a requirement that every worker advertise a local
 copy. The coordinator owns the model path and llama.cpp's RPC layer streams

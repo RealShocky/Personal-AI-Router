@@ -54,8 +54,11 @@ This is a real process-supervision path, but a trainer script and compatible
 PyTorch environment must still be installed on every participating node.
 
 The coordinator method `fabric:training-start` performs this fan-out across the
-assigned nodes and rolls back partial launches. Later recovery can reuse the
-same request with a new rendezvous and the last verified checkpoint.
+assigned nodes and rolls back partial launches. Before fan-out, the
+coordinator revalidates every requested rank against its current ready
+heartbeat, backend, endpoint, GPU count, and any non-empty model inventory.
+Later recovery can reuse the same request with a new rendezvous and the last
+verified checkpoint.
 
 The paired `fabric:training-status` and `fabric:training-stop` methods expose
 rank-level state and stop the complete world, preventing an orphaned rank from
