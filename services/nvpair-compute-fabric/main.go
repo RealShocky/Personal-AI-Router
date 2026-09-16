@@ -91,6 +91,7 @@ func main() {
 	defer cancel()
 	mgr := NewManager(*timeout)
 	logicalDevice := NewLogicalDeviceManager(mgr)
+	logicalDevice.SetPageTransferRuntime(newLogicalPageStore(*clusterDir), newLogicalPageClient(*clusterDir))
 	jobs := NewJobStore(*stateDir)
 	executions := NewExecutionManager(ctx, *clusterDir)
 	executions.SetCheckpointSink(jobs.SaveCheckpoint)
@@ -521,12 +522,28 @@ func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Mana
 }
 
 func newLogicalPageStore(clusterDir string) *PageStore {
+	if strings.TrimSpace(clusterDir) == "" {
+		return nil
+	}
 	store, err := NewPageStore(filepath.Join(clusterDir, "logical-pages"), 256<<20)
 	if err != nil {
 		log.Printf("logical page store unavailable: %v", err)
 		return nil
 	}
 	return store
+}
+
+func newLogicalPageClient(clusterDir string) *http.Client {
+	if strings.TrimSpace(clusterDir) == "" {
+		return nil
+	}
+	mesh := clustertrust.Open(clusterDir)
+	mesh.Refresh()
+	tlsConfig, ok := mesh.ClientTLSConfigAny()
+	if !ok {
+		return nil
+	}
+	return &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{TLSClientConfig: tlsConfig}}
 }
 
 func fabricHTTPHandler(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string) http.Handler {
@@ -1165,7 +1182,7 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			_ = codec.RespondError(msg.ID, -32602, "invalid logical device transfer request")
 			return
 		}
-		transfer, err := logicalDevice.Transfer(request)
+		transfer, err := logicalDevice.TransferPageIfConfigured(context.Background(), request)
 		if err != nil {
 			_ = codec.RespondError(msg.ID, -32001, err.Error())
 			return

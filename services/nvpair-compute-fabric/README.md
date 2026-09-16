@@ -190,9 +190,11 @@ rather than applied to a newer plan.
 `fabric:logical-device-describe` returns the currently advertised CPU, CUDA,
 and Metal provider capabilities. `fabric:logical-device-status` returns the
 authoritative plan epoch, page owners, and transfer IDs. A
-`fabric:logical-device-transfer` request creates a queued transfer; ownership
-changes only after the provider reports a matching digest through the service
-state path.
+`fabric:logical-device-transfer` admits a transfer. When the coordinator has a
+configured cluster directory and pinned client identity, it streams the page
+to the target worker and returns only after peer metadata verifies the digest;
+without that runtime configuration it remains visibly queued for a provider
+adapter to execute.
 
 `fabric:logical-device-recover` accepts a degraded plan ID and an exact
 replacement worker list. It creates a newer epoch and moves page ownership to

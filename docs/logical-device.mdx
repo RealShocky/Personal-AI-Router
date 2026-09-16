@@ -75,8 +75,10 @@ checkpoints, bounded training recovery, and the first logical-device control
 plane. The coordinator now exposes logical-device capability description,
 planning, status, page-transfer admission, and degraded-plan recovery through
 the `fabric:logical-device-*` methods. Plans carry explicit page owners,
-memory tiers, request IDs, and epochs; a transfer remains queued until a
-matching digest is reported, and recovery creates a newer epoch on ready
+memory tiers, request IDs, and epochs. With a configured cluster page store and
+pinned client, a transfer streams bytes to the target and remains uncommitted
+until a matching digest is reported; without those runtime dependencies it is
+queued for a provider adapter. Recovery creates a newer epoch on ready
 replacement workers.
 
 The provider acknowledgment method is

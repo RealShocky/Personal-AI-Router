@@ -15,12 +15,31 @@ import (
 )
 
 type LogicalDeviceManager struct {
-	mu        sync.RWMutex
-	workers   *Manager
-	plans     map[string]fabricwire.LogicalDevicePlan
-	requests  map[string]fabricwire.LogicalDevicePlan
-	states    map[string]fabricwire.LogicalDeviceState
-	transfers map[string]fabricwire.TransferStatus
+	mu         sync.RWMutex
+	workers    *Manager
+	plans      map[string]fabricwire.LogicalDevicePlan
+	requests   map[string]fabricwire.LogicalDevicePlan
+	states     map[string]fabricwire.LogicalDeviceState
+	transfers  map[string]fabricwire.TransferStatus
+	pageStore  *PageStore
+	pageClient *http.Client
+}
+
+func (m *LogicalDeviceManager) SetPageTransferRuntime(store *PageStore, client *http.Client) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pageStore = store
+	m.pageClient = client
+}
+
+func (m *LogicalDeviceManager) TransferPageIfConfigured(ctx context.Context, request fabricwire.TransferRequest) (fabricwire.TransferStatus, error) {
+	m.mu.RLock()
+	store, client := m.pageStore, m.pageClient
+	m.mu.RUnlock()
+	if store == nil || client == nil {
+		return m.Transfer(request)
+	}
+	return m.TransferPage(ctx, client, store, request)
 }
 
 func NewLogicalDeviceManager(workers *Manager) *LogicalDeviceManager {
