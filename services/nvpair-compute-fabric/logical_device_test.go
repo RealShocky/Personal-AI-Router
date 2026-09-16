@@ -182,3 +182,39 @@ func TestLogicalDeviceManagerMarksPlanDegradedWhenWorkerDisappears(t *testing.T)
 		t.Fatalf("Status() after worker loss = %#v, %v", status, ok)
 	}
 }
+
+func TestLogicalDeviceManagerRecoversDegradedPlanWithNewEpoch(t *testing.T) {
+	now := time.Now()
+	workers := NewManager(time.Second)
+	workers.AcceptHeartbeat(fabricwire.Heartbeat{
+		WorkerID: "cpu-a", NodeID: "host-a", Epoch: 1, State: fabricwire.WorkerReady,
+		Runtime: "pair", Backends: []string{"cpu"}, MemoryFree: 8 << 30,
+	}, now.Add(-3*time.Second))
+	workers.AcceptHeartbeat(fabricwire.Heartbeat{
+		WorkerID: "cpu-b", NodeID: "host-b", Epoch: 1, State: fabricwire.WorkerReady,
+		Runtime: "pair", Backends: []string{"cpu"}, MemoryFree: 8 << 30,
+	}, now)
+	logical := NewLogicalDeviceManager(workers)
+	plan, err := logical.Plan(fabricwire.LogicalDevicePlanRequest{
+		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "recover-plan"},
+		Runtime:              "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
+		Providers: []fabricwire.Provider{fabricwire.ProviderCPU}, WorkerGoal: 1,
+		Pages: []fabricwire.PageSpec{{PageID: "page-1", Bytes: 1024}},
+	})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	workers.Reconcile(now)
+	logical.Reconcile(now)
+	recovered, err := logical.Recover(plan.PlanID, []string{"cpu-b"})
+	if err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	if recovered.Epoch <= plan.Epoch || recovered.Workers[0].WorkerID != "cpu-b" || recovered.Pages[0].WorkerID != "cpu-b" {
+		t.Fatalf("recovered plan = %#v, want newer epoch on cpu-b", recovered)
+	}
+	status, ok := logical.Status(plan.PlanID)
+	if !ok || status.State != fabricwire.LogicalDeviceRecovering || status.Epoch != recovered.Epoch {
+		t.Fatalf("recovery status = %#v, %v", status, ok)
+	}
+}
