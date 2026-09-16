@@ -343,7 +343,12 @@ func newHTTPTrainingCoordinator(mgr *Manager, clusterDir, stateDir string, timeo
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-			return TrainingExecution{}, fmt.Errorf("worker %s returned HTTP %d", node.WorkerID, resp.StatusCode)
+			detail, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+			message := strings.TrimSpace(string(detail))
+			if message == "" {
+				return TrainingExecution{}, fmt.Errorf("worker %s returned HTTP %d", node.WorkerID, resp.StatusCode)
+			}
+			return TrainingExecution{}, fmt.Errorf("worker %s returned HTTP %d: %s", node.WorkerID, resp.StatusCode, message)
 		}
 		var execution TrainingExecution
 		if err := json.NewDecoder(resp.Body).Decode(&execution); err != nil {
