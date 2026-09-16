@@ -69,6 +69,10 @@ The llama.cpp client and DGX `ggml-rpc-server` must be built from compatible
 revisions with `GGML_RPC=ON`. Verify that the client reports an `RPC0` device,
 the DGX log reports CUDA buffer allocation/graph execution, and the request
 returns HTTP 200. A heartbeat or open TCP port alone is not inference proof.
+For the current DGX GB10 validation, use the matched llama.cpp `b8487`
+revision (`f93c09e26`) on both sides. The newer installed revision is retained
+for existing projects but currently fails the RPC canary; do not replace it
+until a production maintenance window and a successful canary are available.
 
 ## 2. Pair a device
 
