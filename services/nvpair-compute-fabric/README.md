@@ -50,6 +50,11 @@ request out to every listed rank concurrently. If one rank fails to start, it
 stops the ranks that did start and returns an error; it never leaves a partial
 training world running.
 
+`fabric:training-status` returns the tracked rank list and group state, while
+`fabric:training-stop` stops every rank in the group. Group state is held by the
+coordinator and is intentionally separate from the operating-system device
+inventory.
+
 CUDA and Metal are capability labels for group planning. `fabric:job-start` first creates and validates a tensor-sharding execution plan, then creates one loopback relay per advertised worker and launches a single logical llama.cpp server with its `--rpc` list. The llama.cpp RPC adapter is the first actual execution path; other runtimes still require
 their own adapter and checkpoint semantics.
 
