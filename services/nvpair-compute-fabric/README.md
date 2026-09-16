@@ -56,6 +56,9 @@ coordinator and is intentionally separate from the operating-system device
 inventory. `fabric:training-checkpoint` persists a monotonic checkpoint
 manifest tied to the group epoch; after a coordinator restart, a running group
 is loaded as `recoverable` rather than being falsely reported as active.
+`fabric:training-recover` accepts replacement workers and a fresh rendezvous,
+requires that checkpoint, and relaunches with `--resume` under a new epoch.
+Recovery stops after three failed attempts instead of looping forever.
 
 CUDA and Metal are capability labels for group planning. `fabric:job-start` first creates and validates a tensor-sharding execution plan, then creates one loopback relay per advertised worker and launches a single logical llama.cpp server with its `--rpc` list. The llama.cpp RPC adapter is the first actual execution path; other runtimes still require
 their own adapter and checkpoint semantics.
