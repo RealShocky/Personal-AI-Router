@@ -83,7 +83,7 @@ func main() {
 	jobs := NewJobStore(*stateDir)
 	executions := NewExecutionManager(ctx, *clusterDir)
 	training := NewTrainingManager(ctx)
-	trainingCoordinator := newHTTPTrainingCoordinator(*clusterDir, 15*time.Second)
+	trainingCoordinator := newHTTPTrainingCoordinator(*clusterDir, *stateDir, 15*time.Second)
 	codec := NewCodec(transport)
 	if *httpPort != 0 {
 		if *clusterDir == "" {
@@ -278,7 +278,7 @@ func postFabricJSON(ctx context.Context, client *http.Client, endpoint string, v
 	return nil
 }
 
-func newHTTPTrainingCoordinator(clusterDir string, timeout time.Duration) *TrainingCoordinator {
+func newHTTPTrainingCoordinator(clusterDir, stateDir string, timeout time.Duration) *TrainingCoordinator {
 	mesh := clustertrust.Open(clusterDir)
 	start := func(ctx context.Context, node TrainingNode, request TrainingRequest, rank uint32) (TrainingExecution, error) {
 		mesh.Refresh()
@@ -339,7 +339,7 @@ func newHTTPTrainingCoordinator(clusterDir string, timeout time.Duration) *Train
 		}
 		return nil
 	}
-	return NewTrainingCoordinator(start, stop)
+	return NewTrainingCoordinator(start, stop, stateDir)
 }
 
 func trainingEndpoint(raw, path string) (string, error) {
@@ -807,6 +807,17 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		_ = codec.Respond(msg.ID, status)
+	case "fabric:training-checkpoint":
+		var checkpoint fabricwire.Checkpoint
+		if err := json.Unmarshal(msg.Params, &checkpoint); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid distributed training checkpoint")
+			return
+		}
+		if err := trainingCoordinator.SaveCheckpoint(checkpoint.JobID, checkpoint); err != nil {
+			_ = codec.RespondError(msg.ID, -32003, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, checkpoint)
 	case "fabric:training-stop":
 		var params struct {
 			JobID string `json:"jobId"`

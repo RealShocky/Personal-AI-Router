@@ -55,6 +55,11 @@ The paired `fabric:training-status` and `fabric:training-stop` methods expose
 rank-level state and stop the complete world, preventing an orphaned rank from
 continuing after an operator cancellation.
 
+`fabric:training-checkpoint` persists a monotonic checkpoint manifest tied to
+the group epoch. Coordinator restart changes an old `running` group to
+`recoverable`; it does not claim that the old OS processes survived. Recovery
+must use that verified checkpoint and a fresh rendezvous.
+
 ## Worker states
 
 Workers move through `discovered`, `authenticated`, `probing`, `ready`,

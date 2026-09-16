@@ -5,11 +5,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"sync"
+	"time"
 
 	"nvpair-shared/fabricwire"
 )
@@ -71,22 +74,42 @@ type TrainingCoordinator struct {
 	stop   TrainingStopFunc
 	mu     sync.Mutex
 	groups map[string]trainingGroup
+	path   string
 }
 
 type trainingGroup struct {
 	request    TrainingRequest
 	state      string
+	epoch      uint64
 	executions []TrainingExecution
+	checkpoint fabricwire.Checkpoint
+	attempts   uint32
+}
+
+type persistedTrainingGroup struct {
+	Request    TrainingRequest       `json:"request"`
+	State      string                `json:"state"`
+	Epoch      uint64                `json:"epoch"`
+	Checkpoint fabricwire.Checkpoint `json:"checkpoint"`
+	Attempts   uint32                `json:"recoveryAttempts"`
 }
 
 type TrainingGroupStatus struct {
-	JobID      string              `json:"jobId"`
-	State      string              `json:"state"`
-	Executions []TrainingExecution `json:"executions"`
+	JobID            string                `json:"jobId"`
+	State            string                `json:"state"`
+	Epoch            uint64                `json:"epoch"`
+	Executions       []TrainingExecution   `json:"executions"`
+	Checkpoint       fabricwire.Checkpoint `json:"checkpoint"`
+	RecoveryAttempts uint32                `json:"recoveryAttempts"`
 }
 
-func NewTrainingCoordinator(start TrainingStartFunc, stop TrainingStopFunc) *TrainingCoordinator {
-	return &TrainingCoordinator{start: start, stop: stop, groups: make(map[string]trainingGroup)}
+func NewTrainingCoordinator(start TrainingStartFunc, stop TrainingStopFunc, stateDirs ...string) *TrainingCoordinator {
+	coordinator := &TrainingCoordinator{start: start, stop: stop, groups: make(map[string]trainingGroup)}
+	if len(stateDirs) > 0 && stateDirs[0] != "" {
+		coordinator.path = filepath.Join(stateDirs[0], "training-groups.json")
+		coordinator.load()
+	}
+	return coordinator
 }
 
 func (c *TrainingCoordinator) StartGroup(ctx context.Context, request TrainingRequest) ([]TrainingExecution, error) {
@@ -128,7 +151,16 @@ func (c *TrainingCoordinator) StartGroup(ctx context.Context, request TrainingRe
 		executions[current.rank] = current.execution
 	}
 	c.mu.Lock()
-	c.groups[request.JobID] = trainingGroup{request: request, state: "running", executions: executions}
+	group := trainingGroup{request: request, state: "running", epoch: uint64(time.Now().UnixNano()), executions: executions}
+	c.groups[request.JobID] = group
+	if err := c.persistLocked(); err != nil {
+		delete(c.groups, request.JobID)
+		c.mu.Unlock()
+		for _, current := range launched {
+			_ = c.stop(ctx, request.JobID, current.node)
+		}
+		return nil, fmt.Errorf("persist distributed training group: %w", err)
+	}
 	c.mu.Unlock()
 	return executions, nil
 }
@@ -140,7 +172,25 @@ func (c *TrainingCoordinator) StatusGroup(jobID string) (TrainingGroupStatus, bo
 	if !ok {
 		return TrainingGroupStatus{}, false
 	}
-	return TrainingGroupStatus{JobID: jobID, State: group.state, Executions: append([]TrainingExecution(nil), group.executions...)}, true
+	return TrainingGroupStatus{JobID: jobID, State: group.state, Epoch: group.epoch, Executions: append([]TrainingExecution(nil), group.executions...), Checkpoint: group.checkpoint, RecoveryAttempts: group.attempts}, true
+}
+
+func (c *TrainingCoordinator) SaveCheckpoint(jobID string, checkpoint fabricwire.Checkpoint) error {
+	if checkpoint.Filename == "" {
+		return fmt.Errorf("training checkpoint filename is required")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	group, ok := c.groups[jobID]
+	if !ok {
+		return fmt.Errorf("training group not found")
+	}
+	if checkpoint.JobID != jobID || checkpoint.GroupID != jobID || checkpoint.Epoch != group.epoch || checkpoint.Stage < group.checkpoint.Stage {
+		return fmt.Errorf("training checkpoint does not match the active group epoch or moves backward")
+	}
+	group.checkpoint = checkpoint
+	c.groups[jobID] = group
+	return c.persistLocked()
 }
 
 func (c *TrainingCoordinator) StopGroup(ctx context.Context, jobID string) error {
@@ -167,11 +217,54 @@ func (c *TrainingCoordinator) StopGroup(ctx context.Context, jobID string) error
 		group.state = "stop-failed"
 	}
 	c.groups[jobID] = group
+	if persistErr := c.persistLocked(); firstErr == nil && persistErr != nil {
+		firstErr = persistErr
+	}
 	c.mu.Unlock()
 	if firstErr != nil {
 		return fmt.Errorf("stop distributed training group: %w", firstErr)
 	}
 	return nil
+}
+
+func (c *TrainingCoordinator) load() {
+	data, err := os.ReadFile(c.path)
+	if err != nil {
+		return
+	}
+	var records map[string]persistedTrainingGroup
+	if json.Unmarshal(data, &records) != nil {
+		return
+	}
+	for jobID, record := range records {
+		state := record.State
+		if state == "running" {
+			state = "recoverable"
+		}
+		c.groups[jobID] = trainingGroup{request: record.Request, state: state, epoch: record.Epoch, checkpoint: record.Checkpoint, attempts: record.Attempts}
+	}
+}
+
+func (c *TrainingCoordinator) persistLocked() error {
+	if c.path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(c.path), 0o700); err != nil {
+		return err
+	}
+	records := make(map[string]persistedTrainingGroup, len(c.groups))
+	for jobID, group := range c.groups {
+		records[jobID] = persistedTrainingGroup{Request: group.request, State: group.state, Epoch: group.epoch, Checkpoint: group.checkpoint, Attempts: group.attempts}
+	}
+	data, err := json.MarshalIndent(records, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := c.path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, c.path)
 }
 
 func NewTrainingManager(ctx context.Context) *TrainingManager {

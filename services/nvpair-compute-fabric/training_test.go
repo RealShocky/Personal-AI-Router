@@ -200,3 +200,41 @@ func TestTrainingCoordinatorTracksAndStopsSuccessfulGroup(t *testing.T) {
 		t.Fatalf("group state after stop = %q", status.State)
 	}
 }
+
+func TestTrainingCoordinatorPersistsCheckpointAndGroupState(t *testing.T) {
+	stateDir := t.TempDir()
+	request := TrainingRequest{
+		JobID:                   "train-persisted",
+		ModelDigest:             "sha256:model",
+		TrainerPath:             "train.py",
+		ModelPath:               "model.safetensors",
+		DatasetPath:             "data.jsonl",
+		CheckpointDirectory:     "checkpoints",
+		RendezvousEndpoint:      "127.0.0.1:29400",
+		Parallelism:             TrainingDataParallel,
+		ProcessesPerNode:        1,
+		CheckpointIntervalSteps: 10,
+		Nodes:                   []TrainingNode{{WorkerID: "cpu", Address: "127.0.0.1", Backend: "cpu"}},
+	}
+	start := func(_ context.Context, _ TrainingNode, _ TrainingRequest, rank uint32) (TrainingExecution, error) {
+		return TrainingExecution{JobID: request.JobID, NodeRank: rank, State: "running"}, nil
+	}
+	stop := func(_ context.Context, _ string, _ TrainingNode) error { return nil }
+	first := NewTrainingCoordinator(start, stop, stateDir)
+	if _, err := first.StartGroup(context.Background(), request); err != nil {
+		t.Fatalf("start group: %v", err)
+	}
+	status, ok := first.StatusGroup(request.JobID)
+	if !ok {
+		t.Fatal("started group not found")
+	}
+	checkpoint := fabricwire.Checkpoint{JobID: request.JobID, GroupID: request.JobID, Epoch: status.Epoch, Stage: 4, Filename: "step-0004.pt"}
+	if err := first.SaveCheckpoint(request.JobID, checkpoint); err != nil {
+		t.Fatalf("save checkpoint: %v", err)
+	}
+	second := NewTrainingCoordinator(start, stop, stateDir)
+	reloaded, ok := second.StatusGroup(request.JobID)
+	if !ok || reloaded.Checkpoint.Filename != checkpoint.Filename || reloaded.Checkpoint.Stage != checkpoint.Stage {
+		t.Fatalf("reloaded status = %+v, found=%v", reloaded, ok)
+	}
+}
