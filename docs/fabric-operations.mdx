@@ -276,6 +276,17 @@ $env:PAIR_CLUSTER_DIR='C:\Users\you\AppData\Local\PAIR\cluster'
 .\run-fabric-worker.ps1
 ```
 
+For a WSL2 CUDA worker using Windows mirrored networking, run the bundled
+firewall helper once from an elevated PowerShell prompt on the Windows host:
+
+```powershell
+.\configure-fabric-firewall.ps1 -RemoteSubnet '192.168.50.0/24'
+```
+
+This opens only the PAIR fabric and static-training TCP ports to the specified
+private subnet. Keep the worker's advertised URL on the host/LAN address that
+other paired nodes can reach; do not advertise the old NAT address.
+
 Use `install-fabric-worker-windows.ps1 -Task` to register a per-user logon
 task. It needs no administrator rights. For a Windows GPU, set
 `PAIR_RUNTIME=cuda` and use a CUDA-capable llama.cpp RPC build; otherwise use
