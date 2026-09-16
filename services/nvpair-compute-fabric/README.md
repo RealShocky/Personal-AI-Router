@@ -66,6 +66,12 @@ the required model data to selected workers. Exact local model-digest matching
 continues to apply to distributed training, where every rank must load the
 same training artifact.
 
+Inference placement also accepts `minAggregateMemoryFreeBytes`,
+`minAggregateGpuVramTotalBytes`, and `minAggregateGpuVramFreeBytes`. These
+requirements are checked against the exact selected workers, and the returned
+group plan includes the selected aggregate capacity for operator inspection.
+They are logical scheduling totals, not a new operating-system memory device.
+
 The coordinator also exposes the inference control endpoints
 `POST /v1/fabric/inference/start`, `GET /v1/fabric/inference/status?jobId=...`,
 and `POST /v1/fabric/inference/stop?jobId=...`. They require the same pinned

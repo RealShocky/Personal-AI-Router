@@ -66,26 +66,33 @@ type Heartbeat struct {
 // not pretend that the operating system has a pooled device; the adapter uses
 // the resulting plan to place model work across these worker identities.
 type GroupRequest struct {
-	GroupID               string   `json:"groupId"`
-	Runtime               string   `json:"runtime"`
-	Backends              []string `json:"backends"`
-	WorkerGoal            uint32   `json:"workerGoal"`
-	AllowMixed            bool     `json:"allowMixed"`
-	ModelDigest           string   `json:"modelDigest,omitempty"`
-	RequireCheckpoint     bool     `json:"requireCheckpoint,omitempty"`
-	MaxProbeLatencyMillis uint64   `json:"maxProbeLatencyMillis,omitempty"`
-	MinMemoryFreeBytes    uint64   `json:"minMemoryFreeBytes,omitempty"`
-	MinGPUVramTotalBytes  uint64   `json:"minGpuVramTotalBytes,omitempty"`
-	MinGPUVramFreeBytes   uint64   `json:"minGpuVramFreeBytes,omitempty"`
+	GroupID                       string   `json:"groupId"`
+	Runtime                       string   `json:"runtime"`
+	Backends                      []string `json:"backends"`
+	WorkerGoal                    uint32   `json:"workerGoal"`
+	AllowMixed                    bool     `json:"allowMixed"`
+	ModelDigest                   string   `json:"modelDigest,omitempty"`
+	RequireCheckpoint             bool     `json:"requireCheckpoint,omitempty"`
+	MaxProbeLatencyMillis         uint64   `json:"maxProbeLatencyMillis,omitempty"`
+	MinMemoryFreeBytes            uint64   `json:"minMemoryFreeBytes,omitempty"`
+	MinGPUVramTotalBytes          uint64   `json:"minGpuVramTotalBytes,omitempty"`
+	MinGPUVramFreeBytes           uint64   `json:"minGpuVramFreeBytes,omitempty"`
+	MinAggregateMemoryFreeBytes   uint64   `json:"minAggregateMemoryFreeBytes,omitempty"`
+	MinAggregateGPUVramTotalBytes uint64   `json:"minAggregateGpuVramTotalBytes,omitempty"`
+	MinAggregateGPUVramFreeBytes  uint64   `json:"minAggregateGpuVramFreeBytes,omitempty"`
 }
 
 type GroupPlan struct {
-	GroupID   string            `json:"groupId"`
-	Runtime   string            `json:"runtime"`
-	Workers   []string          `json:"workers"`
-	Endpoints map[string]string `json:"endpoints,omitempty"`
-	PeerIDs   map[string]string `json:"peerIds,omitempty"`
-	Epoch     uint64            `json:"epoch"`
+	GroupID           string            `json:"groupId"`
+	Runtime           string            `json:"runtime"`
+	Workers           []string          `json:"workers"`
+	Endpoints         map[string]string `json:"endpoints,omitempty"`
+	PeerIDs           map[string]string `json:"peerIds,omitempty"`
+	Epoch             uint64            `json:"epoch"`
+	MemoryFreeBytes   uint64            `json:"memoryFreeBytes"`
+	GPUVramTotalBytes uint64            `json:"gpuVramTotalBytes"`
+	GPUVramFreeBytes  uint64            `json:"gpuVramFreeBytes"`
+	GPUCount          uint32            `json:"gpuCount"`
 }
 
 type Checkpoint struct {

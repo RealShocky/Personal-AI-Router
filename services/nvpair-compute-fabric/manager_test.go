@@ -4,6 +4,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -134,6 +135,39 @@ func TestManagerAdmissionFiltersGPUVRAMCapacity(t *testing.T) {
 	plan, err := m.PlanGroup(fabricwire.GroupRequest{GroupID: "g-vram", Runtime: "llama.cpp", Backends: []string{"cuda"}, WorkerGoal: 1, MinGPUVramTotalBytes: 12 << 30, MinGPUVramFreeBytes: 8 << 30})
 	if err != nil || len(plan.Workers) != 1 || plan.Workers[0] != "large" {
 		t.Fatalf("VRAM-aware plan = %+v, err = %v", plan, err)
+	}
+}
+
+func TestManagerAdmissionRequiresAggregateMemoryAndGPUCapacity(t *testing.T) {
+	m := NewManager(time.Second)
+	now := time.Unix(100, 0)
+	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "cuda-a", NodeID: "n1", State: fabricwire.WorkerReady, Epoch: 1, Runtime: "cuda", Backends: []string{"cuda"}, MemoryFree: 32, GPUVramTotal: 12, GPUVramFree: 8}, now)
+	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "cuda-b", NodeID: "n2", State: fabricwire.WorkerReady, Epoch: 1, Runtime: "cuda", Backends: []string{"cuda"}, MemoryFree: 48, GPUVramTotal: 16, GPUVramFree: 10}, now)
+
+	plan, err := m.PlanGroup(fabricwire.GroupRequest{
+		GroupID:                       "aggregate-ok",
+		Runtime:                       "llama.cpp",
+		Backends:                      []string{"cuda"},
+		WorkerGoal:                    2,
+		MinAggregateMemoryFreeBytes:   80,
+		MinAggregateGPUVramTotalBytes: 28,
+		MinAggregateGPUVramFreeBytes:  18,
+	})
+	if err != nil || len(plan.Workers) != 2 {
+		t.Fatalf("aggregate plan = %+v, err = %v", plan, err)
+	}
+
+	_, err = m.PlanGroup(fabricwire.GroupRequest{
+		GroupID:                       "aggregate-short",
+		Runtime:                       "llama.cpp",
+		Backends:                      []string{"cuda"},
+		WorkerGoal:                    2,
+		MinAggregateMemoryFreeBytes:   81,
+		MinAggregateGPUVramTotalBytes: 28,
+		MinAggregateGPUVramFreeBytes:  18,
+	})
+	if err == nil || !strings.Contains(err.Error(), "aggregate memory") {
+		t.Fatalf("aggregate shortfall error = %v, want aggregate memory diagnostic", err)
 	}
 }
 

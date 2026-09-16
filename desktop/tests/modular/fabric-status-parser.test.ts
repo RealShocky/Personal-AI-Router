@@ -46,7 +46,11 @@ describe('fabric status parser', () => {
             runtime: 'llama.cpp',
             workers: ['wsl-5060', 'dgx-spark-gb10'],
             endpoints: { 'wsl-5060': 'https://wsl', 'dgx-spark-gb10': 'https://dgx' },
-            epoch: 42
+            epoch: 42,
+            memoryFree: 0,
+            gpuVramTotal: 0,
+            gpuVramFree: 0,
+            gpuCount: 0
         })
 
         expect(plan).toEqual({
@@ -54,7 +58,11 @@ describe('fabric status parser', () => {
             runtime: 'llama.cpp',
             workers: ['wsl-5060', 'dgx-spark-gb10'],
             endpoints: { 'wsl-5060': 'https://wsl', 'dgx-spark-gb10': 'https://dgx' },
-            epoch: 42
+            epoch: 42,
+            memoryFree: 0,
+            gpuVramTotal: 0,
+            gpuVramFree: 0,
+            gpuCount: 0
         })
     })
 })

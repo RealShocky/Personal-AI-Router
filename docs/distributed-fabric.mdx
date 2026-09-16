@@ -135,6 +135,15 @@ GPU-aware placement can additionally set `minGpuVramTotalBytes` and
 those constraints, preventing assignment to a worker that cannot prove enough
 GPU capacity.
 
+Sharded placement can also set `minAggregateMemoryFreeBytes`,
+`minAggregateGpuVramTotalBytes`, and `minAggregateGpuVramFreeBytes`. These
+constraints are evaluated over the exact workers selected for the plan, while
+the existing `minMemoryFreeBytes` and per-worker GPU limits remain in force.
+The planner ranks eligible workers by the requested aggregate resource and
+returns the measured selected capacity in the plan. If the group cannot meet a
+requested aggregate, admission fails with the required and available totals;
+it never treats unrelated ready workers as part of the job.
+
 The coordinator JSON-RPC surface includes `fabric:job-start`, `fabric:job-stop`, and `fabric:job-status`; job start derives authenticated loopback relays from worker heartbeat endpoints and launches the configured llama.cpp server. The worker must advertise its fabric HTTPS endpoint with `--advertise-url`.
 
 `fabric:get-status` also returns a `capacity` object. Its values are the sum of

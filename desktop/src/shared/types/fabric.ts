@@ -57,6 +57,9 @@ export interface FabricGroupRequest {
     minMemoryFreeBytes?: number
     minGpuVramTotalBytes?: number
     minGpuVramFreeBytes?: number
+    minAggregateMemoryFreeBytes?: number
+    minAggregateGpuVramTotalBytes?: number
+    minAggregateGpuVramFreeBytes?: number
 }
 
 export interface FabricGroupPlan {
@@ -65,6 +68,10 @@ export interface FabricGroupPlan {
     workers: string[]
     endpoints: Record<string, string>
     epoch: number
+    memoryFree: number
+    gpuVramTotal: number
+    gpuVramFree: number
+    gpuCount: number
 }
 
 export interface FabricInferenceRequest {

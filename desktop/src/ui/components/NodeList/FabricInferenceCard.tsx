@@ -20,6 +20,8 @@ export default function FabricInferenceCard() {
     const [modelPath, setModelPath] = useState('')
     const [httpPort, setHttpPort] = useState('19090')
     const [workerGoal, setWorkerGoal] = useState('2')
+    const [aggregateMemoryGiB, setAggregateMemoryGiB] = useState('')
+    const [aggregateGpuVramGiB, setAggregateGpuVramGiB] = useState('')
     const [slotSavePath, setSlotSavePath] = useState('')
     const [checkpointFile, setCheckpointFile] = useState('')
     const [checkpointInterval, setCheckpointInterval] = useState('0')
@@ -64,6 +66,8 @@ export default function FabricInferenceCard() {
     const start = () =>
         run(async () => {
             const goal = Number(workerGoal)
+            const aggregateMemory = Number(aggregateMemoryGiB) > 0 ? Math.round(Number(aggregateMemoryGiB) * 1024 ** 3) : undefined
+            const aggregateGpuVram = Number(aggregateGpuVramGiB) > 0 ? Math.round(Number(aggregateGpuVramGiB) * 1024 ** 3) : undefined
             const request: FabricInferenceRequest = {
                 jobId: jobId.trim(),
                 modelDigest: modelDigest.trim(),
@@ -74,7 +78,7 @@ export default function FabricInferenceCard() {
                 ...(slotSavePath.trim() === '' ? {} : { slotSavePath: slotSavePath.trim() }),
                 ...(checkpointFile.trim() === '' ? {} : { checkpointFile: checkpointFile.trim() }),
                 ...(Number(checkpointInterval) > 0 ? { checkpointIntervalSeconds: Number(checkpointInterval) } : {}),
-                group: { groupId: jobId.trim(), runtime: 'llama.cpp', backends: ['cpu', 'cuda'], workerGoal: goal, allowMixed: true }
+                group: { groupId: jobId.trim(), runtime: 'llama.cpp', backends: ['cpu', 'cuda'], workerGoal: goal, allowMixed: true, ...(aggregateMemory === undefined ? {} : { minAggregateMemoryFreeBytes: aggregateMemory }), ...(aggregateGpuVram === undefined ? {} : { minAggregateGpuVramFreeBytes: aggregateGpuVram }) }
             }
             setExecution(await window.pairApi.fabric.startInference(request))
         })
@@ -82,12 +86,16 @@ export default function FabricInferenceCard() {
     const dryRun = () =>
         run(async () => {
             const goal = Number(workerGoal)
+            const aggregateMemory = Number(aggregateMemoryGiB) > 0 ? Math.round(Number(aggregateMemoryGiB) * 1024 ** 3) : undefined
+            const aggregateGpuVram = Number(aggregateGpuVramGiB) > 0 ? Math.round(Number(aggregateGpuVramGiB) * 1024 ** 3) : undefined
             const request = {
                 groupId: jobId.trim(),
                 runtime: 'llama.cpp',
                 backends: ['cpu', 'cuda'],
                 workerGoal: goal,
                 allowMixed: true,
+                ...(aggregateMemory === undefined ? {} : { minAggregateMemoryFreeBytes: aggregateMemory }),
+                ...(aggregateGpuVram === undefined ? {} : { minAggregateGpuVramFreeBytes: aggregateGpuVram })
             }
             setPlan(await window.pairApi.fabric.planGroup(request))
         })
@@ -120,6 +128,8 @@ export default function FabricInferenceCard() {
                     <FormField slotLabel="Model path"><TextInput value={modelPath} onValueChange={setModelPath} disabled={busy} size="small" /></FormField>
                     <FormField slotLabel="HTTP port"><TextInput value={httpPort} onValueChange={setHttpPort} disabled={busy} size="small" /></FormField>
                     <FormField slotLabel="Workers"><TextInput value={workerGoal} onValueChange={setWorkerGoal} disabled={busy} size="small" /></FormField>
+                    <FormField slotLabel="Aggregate RAM (GiB)"><TextInput value={aggregateMemoryGiB} onValueChange={setAggregateMemoryGiB} disabled={busy} size="small" /></FormField>
+                    <FormField slotLabel="Aggregate VRAM (GiB)"><TextInput value={aggregateGpuVramGiB} onValueChange={setAggregateGpuVramGiB} disabled={busy} size="small" /></FormField>
                     <FormField slotLabel="Slot save path"><TextInput value={slotSavePath} onValueChange={setSlotSavePath} disabled={busy} size="small" /></FormField>
                     <FormField slotLabel="Checkpoint file"><TextInput value={checkpointFile} onValueChange={setCheckpointFile} disabled={busy} size="small" /></FormField>
                     <FormField slotLabel="Checkpoint seconds"><TextInput value={checkpointInterval} onValueChange={setCheckpointInterval} disabled={busy} size="small" /></FormField>
@@ -135,7 +145,7 @@ export default function FabricInferenceCard() {
                     {execution.checkpointFile ? ` · checkpoint ${execution.checkpointFile} (stage ${execution.checkpointStage})` : ''}
                     {execution.recoveryAttempts > 0 ? ` · recovery ${execution.recoveryAttempts}/3` : ''}
                 </Text>}
-                {plan && <Text kind="body/regular/sm" className="text-subtle-color">Admission ready: {plan.workers.join(', ')} · epoch {plan.epoch}</Text>}
+                {plan && <Text kind="body/regular/sm" className="text-subtle-color">Admission ready: {plan.workers.join(', ')} · {plan.gpuCount} GPU · {(plan.gpuVramFree / 1024 ** 3).toFixed(1)} GiB free VRAM · epoch {plan.epoch}</Text>}
                 {error && <Text kind="body/regular/sm" className="text-error-color">{error}</Text>}
             </Stack>
         </div>

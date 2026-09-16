@@ -98,8 +98,10 @@ from the same card.
 
 Use **Preview admission** first to run the coordinator's real placement checks
 without launching a process. The preview shows the selected worker IDs and
-plan epoch; a failed preview explains why the requested group cannot currently
-be formed.
+plan epoch plus the selected aggregate GPU count and free VRAM. Optional
+aggregate RAM/VRAM requirements make the preview reject a group unless the
+workers selected for that exact plan meet the requested totals; a failed
+preview explains the measured shortfall.
 
 Checkpoint filenames are relative slot names, not arbitrary filesystem paths;
 llama.cpp rejects path separators. PAIR writes the configured checkpoint file

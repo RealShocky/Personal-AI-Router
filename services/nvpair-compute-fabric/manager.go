@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -153,6 +154,11 @@ func (m *Manager) PlanGroup(request fabricwire.GroupRequest) (fabricwire.GroupPl
 		Endpoints: make(map[string]string),
 		PeerIDs:   make(map[string]string),
 	}
+	type candidate struct {
+		id     string
+		worker WorkerRecord
+	}
+	eligible := make([]candidate, 0, len(m.workers))
 	for id, worker := range m.workers {
 		if worker.State != fabricwire.WorkerReady || !runtimeMatches(request.Runtime, worker.Heartbeat) {
 			continue
@@ -181,6 +187,33 @@ func (m *Manager) PlanGroup(request fabricwire.GroupRequest) (fabricwire.GroupPl
 		if request.MaxProbeLatencyMillis > 0 && (worker.Heartbeat.ProbeLatencyMillis == 0 || worker.Heartbeat.ProbeLatencyMillis > request.MaxProbeLatencyMillis) {
 			continue
 		}
+		eligible = append(eligible, candidate{id: id, worker: worker})
+	}
+	if uint32(len(eligible)) < request.WorkerGoal {
+		return fabricwire.GroupPlan{}, fmt.Errorf("only %d eligible workers available, need %d", len(eligible), request.WorkerGoal)
+	}
+	sort.Slice(eligible, func(i, j int) bool {
+		left, right := eligible[i].worker.Heartbeat, eligible[j].worker.Heartbeat
+		if request.MinAggregateGPUVramFreeBytes > 0 || request.MinAggregateGPUVramTotalBytes > 0 {
+			if left.GPUVramFree != right.GPUVramFree {
+				return left.GPUVramFree > right.GPUVramFree
+			}
+			if left.GPUVramTotal != right.GPUVramTotal {
+				return left.GPUVramTotal > right.GPUVramTotal
+			}
+		}
+		if request.MinAggregateMemoryFreeBytes > 0 && left.MemoryFree != right.MemoryFree {
+			return left.MemoryFree > right.MemoryFree
+		}
+		return eligible[i].id < eligible[j].id
+	})
+	selected := eligible[:request.WorkerGoal]
+	var aggregateMemory, aggregateGPUVramTotal, aggregateGPUVramFree uint64
+	for _, item := range selected {
+		id, worker := item.id, item.worker
+		aggregateMemory += worker.Heartbeat.MemoryFree
+		aggregateGPUVramTotal += worker.Heartbeat.GPUVramTotal
+		aggregateGPUVramFree += worker.Heartbeat.GPUVramFree
 		plan.Workers = append(plan.Workers, id)
 		if worker.Heartbeat.Endpoint != "" {
 			plan.Endpoints[id] = worker.Heartbeat.Endpoint
@@ -192,11 +225,15 @@ func (m *Manager) PlanGroup(request fabricwire.GroupRequest) (fabricwire.GroupPl
 		if peerID != "" {
 			plan.PeerIDs[id] = peerID
 		}
-		if uint32(len(plan.Workers)) == request.WorkerGoal {
-			return plan, nil
-		}
+		plan.MemoryFreeBytes = aggregateMemory
+		plan.GPUVramTotalBytes = aggregateGPUVramTotal
+		plan.GPUVramFreeBytes = aggregateGPUVramFree
+		plan.GPUCount += worker.Heartbeat.GPUCount
 	}
-	return fabricwire.GroupPlan{}, fmt.Errorf("only %d eligible workers available, need %d", len(plan.Workers), request.WorkerGoal)
+	if aggregateMemory < request.MinAggregateMemoryFreeBytes || aggregateGPUVramTotal < request.MinAggregateGPUVramTotalBytes || aggregateGPUVramFree < request.MinAggregateGPUVramFreeBytes {
+		return fabricwire.GroupPlan{}, fmt.Errorf("aggregate capacity shortfall: aggregate memory free %d/%d bytes, aggregate GPU VRAM total %d/%d bytes, aggregate GPU VRAM free %d/%d bytes", aggregateMemory, request.MinAggregateMemoryFreeBytes, aggregateGPUVramTotal, request.MinAggregateGPUVramTotalBytes, aggregateGPUVramFree, request.MinAggregateGPUVramFreeBytes)
+	}
+	return plan, nil
 }
 
 func (m *Manager) BuildExecutionPlan(request fabricwire.GroupRequest, group fabricwire.GroupPlan, strategy fabricwire.ShardStrategy, transport fabricwire.Transport) (fabricwire.ExecutionPlan, error) {

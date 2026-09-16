@@ -126,7 +126,11 @@ export function parseFabricGroupPlan(value: JsonValue | undefined): FabricGroupP
         runtime: stringValue(obj?.runtime),
         workers: stringArray(obj?.workers),
         endpoints,
-        epoch: numberValue(obj?.epoch)
+        epoch: numberValue(obj?.epoch),
+        memoryFree: numberValue(obj?.memoryFreeBytes),
+        gpuVramTotal: numberValue(obj?.gpuVramTotalBytes),
+        gpuVramFree: numberValue(obj?.gpuVramFreeBytes),
+        gpuCount: numberValue(obj?.gpuCount)
     }
 }
 
@@ -248,7 +252,10 @@ function fabricGroupRequestJson(group: FabricInferenceRequest['group']): JsonObj
         ...(group.maxProbeLatencyMillis === undefined ? {} : { maxProbeLatencyMillis: group.maxProbeLatencyMillis }),
         ...(group.minMemoryFreeBytes === undefined ? {} : { minMemoryFreeBytes: group.minMemoryFreeBytes }),
         ...(group.minGpuVramTotalBytes === undefined ? {} : { minGpuVramTotalBytes: group.minGpuVramTotalBytes }),
-        ...(group.minGpuVramFreeBytes === undefined ? {} : { minGpuVramFreeBytes: group.minGpuVramFreeBytes })
+        ...(group.minGpuVramFreeBytes === undefined ? {} : { minGpuVramFreeBytes: group.minGpuVramFreeBytes }),
+        ...(group.minAggregateMemoryFreeBytes === undefined ? {} : { minAggregateMemoryFreeBytes: group.minAggregateMemoryFreeBytes }),
+        ...(group.minAggregateGpuVramTotalBytes === undefined ? {} : { minAggregateGpuVramTotalBytes: group.minAggregateGpuVramTotalBytes }),
+        ...(group.minAggregateGpuVramFreeBytes === undefined ? {} : { minAggregateGpuVramFreeBytes: group.minAggregateGpuVramFreeBytes })
     }
 }
 
