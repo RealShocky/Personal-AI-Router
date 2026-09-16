@@ -89,6 +89,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	mgr := NewManager(*timeout)
+	logicalDevice := NewLogicalDeviceManager(mgr)
 	jobs := NewJobStore(*stateDir)
 	executions := NewExecutionManager(ctx, *clusterDir)
 	executions.SetCheckpointSink(jobs.SaveCheckpoint)
@@ -177,7 +178,7 @@ func main() {
 			log.Printf("JSON-RPC read error: %v", err)
 			continue
 		}
-		handleMessage(codec, mgr, jobs, executions, trainingCoordinator, cancel, msg)
+		handleMessage(codec, mgr, jobs, executions, trainingCoordinator, logicalDevice, cancel, msg)
 	}
 }
 
@@ -998,7 +999,7 @@ func writeJSON(w http.ResponseWriter, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *ExecutionManager, trainingCoordinator *TrainingCoordinator, cancel context.CancelFunc, msg *Message) {
+func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *ExecutionManager, trainingCoordinator *TrainingCoordinator, logicalDevice *LogicalDeviceManager, cancel context.CancelFunc, msg *Message) {
 	if !msg.IsRequest() {
 		return
 	}
@@ -1051,6 +1052,22 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		plan, err := mgr.BuildExecutionPlan(params.Request, params.Group, params.Strategy, params.Transport)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32001, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, plan)
+	case "fabric:logical-device-plan":
+		if logicalDevice == nil {
+			_ = codec.RespondError(msg.ID, -32001, "logical device manager unavailable")
+			return
+		}
+		var request fabricwire.LogicalDevicePlanRequest
+		if err := json.Unmarshal(msg.Params, &request); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid logical device plan request")
+			return
+		}
+		plan, err := logicalDevice.Plan(request)
 		if err != nil {
 			_ = codec.RespondError(msg.ID, -32001, err.Error())
 			return

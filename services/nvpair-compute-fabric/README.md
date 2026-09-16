@@ -158,6 +158,35 @@ count, latest checkpoint stage/file, and an RFC3339 `updatedAt` timestamp. The
 credential, and key material are never included.
 The explicit `--rpc-relay-peer-id` form is preferred for a standalone relay when the cluster contains more than one pinned peer.
 
+## Logical device planning
+
+`fabric:logical-device-plan` creates an explicit PAIR logical-device plan from
+ready worker capabilities. The request includes `protocolVersion`, a unique
+`requestId`, `runtime`, `modelDigest`, `shardStrategy`, `workerGoal`, optional
+`providers`, and page specifications. The response contains an epoch, worker
+assignments, and page placements. A placement identifies a PAIR worker and
+memory tier; it is not a CUDA or Metal pointer and does not create contiguous
+VRAM.
+
+Example request:
+
+```json
+{
+  "protocolVersion": 1,
+  "requestId": "plan-request-1",
+  "runtime": "pair",
+  "modelDigest": "sha256:model",
+  "shardStrategy": "pipeline",
+  "providers": ["cpu", "cuda", "metal"],
+  "workerGoal": 2,
+  "pages": [{"pageId": "weights-0", "bytes": 1048576, "dtype": "bf16", "layout": "row-major"}]
+}
+```
+
+The same `requestId` is idempotent and returns the original plan. Later logical
+device methods operate on that plan's ID and epoch; an old epoch is rejected
+rather than applied to a newer plan.
+
 ## Test
 
 ```bash
