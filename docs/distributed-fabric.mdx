@@ -68,6 +68,12 @@ the group epoch. Coordinator restart changes an old `running` group to
 `recoverable`; it does not claim that the old OS processes survived. Recovery
 must use that verified checkpoint and a fresh rendezvous.
 
+When configured with the coordinator's recovery-node provider, a status refresh
+automatically supplies ready same-backend replacement workers. It excludes the
+current group, requires a complete replacement world, and resumes only when a
+verified checkpoint exists. Otherwise the group remains `recoverable` for
+manual recovery; the three-attempt cap still applies.
+
 ## Worker states
 
 Workers move through `discovered`, `authenticated`, `probing`, `ready`,

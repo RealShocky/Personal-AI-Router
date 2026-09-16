@@ -69,14 +69,16 @@ type TrainingManager struct {
 type TrainingStartFunc func(context.Context, TrainingNode, TrainingRequest, uint32) (TrainingExecution, error)
 type TrainingStopFunc func(context.Context, string, TrainingNode) error
 type TrainingStatusFunc func(context.Context, string, TrainingNode) (TrainingExecution, error)
+type TrainingRecoveryNodeProvider func(TrainingRequest) []TrainingNode
 
 type TrainingCoordinator struct {
-	start  TrainingStartFunc
-	stop   TrainingStopFunc
-	status TrainingStatusFunc
-	mu     sync.Mutex
-	groups map[string]trainingGroup
-	path   string
+	start         TrainingStartFunc
+	stop          TrainingStopFunc
+	status        TrainingStatusFunc
+	recoveryNodes TrainingRecoveryNodeProvider
+	mu            sync.Mutex
+	groups        map[string]trainingGroup
+	path          string
 }
 
 type trainingGroup struct {
@@ -118,6 +120,12 @@ func (c *TrainingCoordinator) SetStatusFunc(status TrainingStatusFunc) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.status = status
+}
+
+func (c *TrainingCoordinator) SetRecoveryNodeProvider(provider TrainingRecoveryNodeProvider) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.recoveryNodes = provider
 }
 
 func (c *TrainingCoordinator) RefreshStatus(ctx context.Context, jobID string) error {
@@ -165,13 +173,29 @@ func (c *TrainingCoordinator) RefreshStatus(ctx context.Context, jobID string) e
 		return fmt.Errorf("training group not found")
 	}
 	group.executions = refreshed
+	autoRecover := false
+	requestForRecovery := group.request
 	if failed && group.state == "running" {
 		group.state = "recoverable"
+		autoRecover = group.checkpoint.Filename != "" && c.recoveryNodes != nil
 	}
+	provider := c.recoveryNodes
 	c.groups[jobID] = group
 	err := c.persistLocked()
 	c.mu.Unlock()
-	return err
+	if err != nil {
+		return err
+	}
+	if autoRecover && provider != nil {
+		nodes := provider(requestForRecovery)
+		if len(nodes) == len(requestForRecovery.Nodes) {
+			_, recoveryErr := c.RecoverGroup(ctx, jobID, nodes, requestForRecovery.RendezvousEndpoint)
+			if recoveryErr != nil {
+				return recoveryErr
+			}
+		}
+	}
+	return nil
 }
 
 func (c *TrainingCoordinator) StartGroup(ctx context.Context, request TrainingRequest) ([]TrainingExecution, error) {

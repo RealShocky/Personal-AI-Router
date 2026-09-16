@@ -165,3 +165,15 @@ func TestManagerBuildsVersionedExecutionPlanFromLiveWorkers(t *testing.T) {
 		t.Fatalf("execution plan omitted peer identities: %+v", plan.Workers)
 	}
 }
+
+func TestReadyTrainingReplacementNodesExcludeCurrentWorkers(t *testing.T) {
+	now := time.Now()
+	m := NewManager(time.Second)
+	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "node-a", NodeID: "a", Endpoint: "https://node-a:14324", State: fabricwire.WorkerReady, Epoch: 1, Backends: []string{"cuda"}, GPUCount: 1}, now)
+	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "node-b", NodeID: "b", Endpoint: "https://node-b:14324", State: fabricwire.WorkerReady, Epoch: 1, Backends: []string{"cuda"}, GPUCount: 2}, now)
+	request := TrainingRequest{Nodes: []TrainingNode{{WorkerID: "node-a", Address: "https://node-a:14324", Backend: "cuda"}}}
+	replacements := readyTrainingReplacementNodes(m, request)
+	if len(replacements) != 1 || replacements[0].WorkerID != "node-b" || replacements[0].GPUCount != 2 {
+		t.Fatalf("replacement nodes = %+v", replacements)
+	}
+}

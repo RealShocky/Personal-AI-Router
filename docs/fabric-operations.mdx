@@ -289,6 +289,13 @@ mTLS handshake and capability probe before rejoining the queue. A runtime that
 cannot restore its checkpoint reports failure rather than replaying side
 effects silently.
 
+For distributed training, a refreshed rank failure becomes `recoverable`.
+When the coordinator has ready same-backend replacement workers and a verified
+checkpoint, it automatically launches a complete replacement world with a
+new rendezvous epoch and `--resume`. If either condition is missing, the
+dashboard keeps the group recoverable and requires an operator to provide the
+replacement set. Recovery is capped at three attempts.
+
 ## 6. Security and fleet rules
 
 Use a private network or a narrowly scoped firewall rule for `14321` and

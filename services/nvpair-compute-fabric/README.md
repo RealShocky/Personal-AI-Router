@@ -70,6 +70,12 @@ is loaded as `recoverable` rather than being falsely reported as active.
 `fabric:training-recover` accepts replacement workers and a fresh rendezvous,
 requires that checkpoint, and relaunches with `--resume` under a new epoch.
 Recovery stops after three failed attempts instead of looping forever.
+The coordinator can automatically perform that recovery after a status refresh
+when a recovery-node provider is configured. It selects ready workers with the
+same backend, excludes the failed group's current workers, and requires the
+replacement count to match the original world. Without a verified checkpoint
+or a complete replacement set, the group remains `recoverable` for an operator
+to inspect; uncheckpointed work is never silently replayed.
 
 CUDA and Metal are capability labels for group planning. `fabric:job-start` first creates and validates a tensor-sharding execution plan, then creates one loopback relay per advertised worker and launches a single logical llama.cpp server with its `--rpc` list. The llama.cpp RPC adapter is the first actual execution path; other runtimes still require
 their own adapter and checkpoint semantics.

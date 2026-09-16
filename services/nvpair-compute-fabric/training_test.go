@@ -315,3 +315,47 @@ func TestTrainingCoordinatorRecoversFromCheckpointWithReplacementWorkers(t *test
 		t.Fatalf("recovered status = %+v requests = %+v", status, startedRequests)
 	}
 }
+
+func TestTrainingCoordinatorAutomaticallyRecoversAfterRankFailure(t *testing.T) {
+	request := TrainingRequest{
+		JobID:                   "train-auto-recover",
+		ModelDigest:             "sha256:model",
+		TrainerPath:             "train.py",
+		ModelPath:               "model.safetensors",
+		DatasetPath:             "data.jsonl",
+		CheckpointDirectory:     "checkpoints",
+		RendezvousEndpoint:      "127.0.0.1:29400",
+		Parallelism:             TrainingDataParallel,
+		ProcessesPerNode:        1,
+		CheckpointIntervalSteps: 10,
+		Nodes:                   []TrainingNode{{WorkerID: "node-a", Address: "127.0.0.1", Backend: "cpu"}},
+	}
+	startedRequests := make([]TrainingRequest, 0, 2)
+	coordinator := NewTrainingCoordinator(
+		func(_ context.Context, _ TrainingNode, next TrainingRequest, _ uint32) (TrainingExecution, error) {
+			startedRequests = append(startedRequests, next)
+			return TrainingExecution{JobID: next.JobID, State: "running"}, nil
+		},
+		func(_ context.Context, _ string, _ TrainingNode) error { return nil },
+	)
+	coordinator.SetStatusFunc(func(_ context.Context, _ string, _ TrainingNode) (TrainingExecution, error) {
+		return TrainingExecution{}, fmt.Errorf("rank unavailable")
+	})
+	coordinator.SetRecoveryNodeProvider(func(_ TrainingRequest) []TrainingNode {
+		return []TrainingNode{{WorkerID: "node-b", Address: "127.0.0.2", Backend: "cpu"}}
+	})
+	if _, err := coordinator.StartGroup(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	status, _ := coordinator.StatusGroup(request.JobID)
+	if err := coordinator.SaveCheckpoint(request.JobID, fabricwire.Checkpoint{JobID: request.JobID, GroupID: request.JobID, Epoch: status.Epoch, Stage: 8, Filename: "step-0008.pt"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.RefreshStatus(context.Background(), request.JobID); err != nil {
+		t.Fatal(err)
+	}
+	status, _ = coordinator.StatusGroup(request.JobID)
+	if status.State != "running" || status.RecoveryAttempts != 1 || len(startedRequests) != 2 || startedRequests[1].ResumeCheckpoint != "step-0008.pt" {
+		t.Fatalf("auto-recovered status = %+v requests = %+v", status, startedRequests)
+	}
+}

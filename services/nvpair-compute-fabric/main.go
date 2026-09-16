@@ -93,7 +93,7 @@ func main() {
 	executions := NewExecutionManager(ctx, *clusterDir)
 	executions.SetCheckpointSink(jobs.SaveCheckpoint)
 	training := NewTrainingManager(ctx)
-	trainingCoordinator := newHTTPTrainingCoordinator(*clusterDir, *stateDir, 15*time.Second)
+	trainingCoordinator := newHTTPTrainingCoordinator(mgr, *clusterDir, *stateDir, 15*time.Second)
 	codec := NewCodec(transport)
 	if *httpPort != 0 {
 		if *clusterDir == "" {
@@ -310,7 +310,7 @@ func postFabricJSON(ctx context.Context, client *http.Client, endpoint string, v
 	return nil
 }
 
-func newHTTPTrainingCoordinator(clusterDir, stateDir string, timeout time.Duration) *TrainingCoordinator {
+func newHTTPTrainingCoordinator(mgr *Manager, clusterDir, stateDir string, timeout time.Duration) *TrainingCoordinator {
 	mesh := clustertrust.Open(clusterDir)
 	start := func(ctx context.Context, node TrainingNode, request TrainingRequest, rank uint32) (TrainingExecution, error) {
 		mesh.Refresh()
@@ -402,7 +402,33 @@ func newHTTPTrainingCoordinator(clusterDir, stateDir string, timeout time.Durati
 	}
 	coordinator := NewTrainingCoordinator(start, stop, stateDir)
 	coordinator.SetStatusFunc(status)
+	coordinator.SetRecoveryNodeProvider(func(request TrainingRequest) []TrainingNode {
+		return readyTrainingReplacementNodes(mgr, request)
+	})
 	return coordinator
+}
+
+func readyTrainingReplacementNodes(mgr *Manager, request TrainingRequest) []TrainingNode {
+	if len(request.Nodes) == 0 {
+		return nil
+	}
+	backend := request.Nodes[0].Backend
+	wanted := map[string]bool{backend: true}
+	used := make(map[string]bool, len(request.Nodes))
+	for _, node := range request.Nodes {
+		used[node.WorkerID] = true
+	}
+	replacements := make([]TrainingNode, 0, len(request.Nodes))
+	for _, record := range mgr.Workers() {
+		if record.State != fabricwire.WorkerReady || used[record.Heartbeat.WorkerID] || record.Heartbeat.Endpoint == "" || !hasBackend(record.Heartbeat.Backends, wanted) {
+			continue
+		}
+		replacements = append(replacements, TrainingNode{WorkerID: record.Heartbeat.WorkerID, Address: record.Heartbeat.Endpoint, Backend: backend, GPUCount: record.Heartbeat.GPUCount})
+		if len(replacements) == len(request.Nodes) {
+			return replacements
+		}
+	}
+	return nil
 }
 
 func trainingEndpoint(raw, path string) (string, error) {
