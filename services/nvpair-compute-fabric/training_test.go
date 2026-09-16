@@ -238,3 +238,45 @@ func TestTrainingCoordinatorPersistsCheckpointAndGroupState(t *testing.T) {
 		t.Fatalf("reloaded status = %+v, found=%v", reloaded, ok)
 	}
 }
+
+func TestTrainingCoordinatorRecoversFromCheckpointWithReplacementWorkers(t *testing.T) {
+	request := TrainingRequest{
+		JobID:                   "train-recover",
+		ModelDigest:             "sha256:model",
+		TrainerPath:             "train.py",
+		ModelPath:               "model.safetensors",
+		DatasetPath:             "data.jsonl",
+		CheckpointDirectory:     "checkpoints",
+		RendezvousEndpoint:      "127.0.0.1:29400",
+		Parallelism:             TrainingDataParallel,
+		ProcessesPerNode:        1,
+		CheckpointIntervalSteps: 10,
+		Nodes:                   []TrainingNode{{WorkerID: "node-a", Address: "127.0.0.1", Backend: "cpu"}},
+	}
+	startedRequests := make([]TrainingRequest, 0, 2)
+	coordinator := NewTrainingCoordinator(
+		func(_ context.Context, _ TrainingNode, request TrainingRequest, _ uint32) (TrainingExecution, error) {
+			startedRequests = append(startedRequests, request)
+			return TrainingExecution{JobID: request.JobID, State: "running"}, nil
+		},
+		func(_ context.Context, _ string, _ TrainingNode) error { return nil },
+	)
+	if _, err := coordinator.StartGroup(context.Background(), request); err != nil {
+		t.Fatalf("start group: %v", err)
+	}
+	status, _ := coordinator.StatusGroup(request.JobID)
+	if err := coordinator.SaveCheckpoint(request.JobID, fabricwire.Checkpoint{JobID: request.JobID, GroupID: request.JobID, Epoch: status.Epoch, Stage: 8, Filename: "step-0008.pt"}); err != nil {
+		t.Fatalf("save checkpoint: %v", err)
+	}
+	if err := coordinator.MarkFailed(request.JobID); err != nil {
+		t.Fatalf("mark failed: %v", err)
+	}
+	replacement := []TrainingNode{{WorkerID: "node-b", Address: "127.0.0.2", Backend: "cpu"}}
+	if _, err := coordinator.RecoverGroup(context.Background(), request.JobID, replacement, "127.0.0.1:29401"); err != nil {
+		t.Fatalf("recover group: %v", err)
+	}
+	status, _ = coordinator.StatusGroup(request.JobID)
+	if status.State != "running" || status.RecoveryAttempts != 1 || len(startedRequests) != 2 || startedRequests[1].ResumeCheckpoint != "step-0008.pt" {
+		t.Fatalf("recovered status = %+v requests = %+v", status, startedRequests)
+	}
+}

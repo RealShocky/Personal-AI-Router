@@ -55,6 +55,11 @@ The paired `fabric:training-status` and `fabric:training-stop` methods expose
 rank-level state and stop the complete world, preventing an orphaned rank from
 continuing after an operator cancellation.
 
+`fabric:training-recover` accepts replacement workers and a fresh rendezvous,
+restores the last verified checkpoint through the trainer's `--resume` contract,
+and bounds recovery to three attempts. A failed recovery remains visible as
+`failed`.
+
 `fabric:training-checkpoint` persists a monotonic checkpoint manifest tied to
 the group epoch. Coordinator restart changes an old `running` group to
 `recoverable`; it does not claim that the old OS processes survived. Recovery

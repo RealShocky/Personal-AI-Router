@@ -818,6 +818,22 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		_ = codec.Respond(msg.ID, checkpoint)
+	case "fabric:training-recover":
+		var params struct {
+			JobID      string         `json:"jobId"`
+			Nodes      []TrainingNode `json:"nodes"`
+			Rendezvous string         `json:"rendezvousEndpoint"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid distributed training recovery")
+			return
+		}
+		executions, err := trainingCoordinator.RecoverGroup(context.Background(), params.JobID, params.Nodes, params.Rendezvous)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32004, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, executions)
 	case "fabric:training-stop":
 		var params struct {
 			JobID string `json:"jobId"`

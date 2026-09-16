@@ -116,6 +116,26 @@ func (c *TrainingCoordinator) StartGroup(ctx context.Context, request TrainingRe
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
+	executions, err := c.launchTrainingWorld(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	group := trainingGroup{request: request, state: "running", epoch: uint64(time.Now().UnixNano()), executions: executions}
+	c.groups[request.JobID] = group
+	if err := c.persistLocked(); err != nil {
+		delete(c.groups, request.JobID)
+		c.mu.Unlock()
+		for _, node := range request.Nodes {
+			_ = c.stop(ctx, request.JobID, node)
+		}
+		return nil, fmt.Errorf("persist distributed training group: %w", err)
+	}
+	c.mu.Unlock()
+	return executions, nil
+}
+
+func (c *TrainingCoordinator) launchTrainingWorld(ctx context.Context, request TrainingRequest) ([]TrainingExecution, error) {
 	type result struct {
 		rank      uint32
 		node      TrainingNode
@@ -150,18 +170,6 @@ func (c *TrainingCoordinator) StartGroup(ctx context.Context, request TrainingRe
 	for _, current := range launched {
 		executions[current.rank] = current.execution
 	}
-	c.mu.Lock()
-	group := trainingGroup{request: request, state: "running", epoch: uint64(time.Now().UnixNano()), executions: executions}
-	c.groups[request.JobID] = group
-	if err := c.persistLocked(); err != nil {
-		delete(c.groups, request.JobID)
-		c.mu.Unlock()
-		for _, current := range launched {
-			_ = c.stop(ctx, request.JobID, current.node)
-		}
-		return nil, fmt.Errorf("persist distributed training group: %w", err)
-	}
-	c.mu.Unlock()
 	return executions, nil
 }
 
@@ -191,6 +199,81 @@ func (c *TrainingCoordinator) SaveCheckpoint(jobID string, checkpoint fabricwire
 	group.checkpoint = checkpoint
 	c.groups[jobID] = group
 	return c.persistLocked()
+}
+
+func (c *TrainingCoordinator) MarkFailed(jobID string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	group, ok := c.groups[jobID]
+	if !ok || group.state != "running" {
+		return fmt.Errorf("training group is not running")
+	}
+	group.state = "failed"
+	c.groups[jobID] = group
+	return c.persistLocked()
+}
+
+func (c *TrainingCoordinator) RecoverGroup(ctx context.Context, jobID string, nodes []TrainingNode, rendezvous string) ([]TrainingExecution, error) {
+	c.mu.Lock()
+	group, ok := c.groups[jobID]
+	if !ok || (group.state != "failed" && group.state != "recoverable") {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("training group is not recoverable")
+	}
+	if group.checkpoint.Filename == "" {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("training recovery requires a verified checkpoint")
+	}
+	if group.attempts >= 3 {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("training recovery attempt limit reached")
+	}
+	request := group.request
+	request.Nodes = append([]TrainingNode(nil), nodes...)
+	request.RendezvousEndpoint = rendezvous
+	request.ResumeCheckpoint = group.checkpoint.Filename
+	if err := request.Validate(); err != nil {
+		c.mu.Unlock()
+		return nil, err
+	}
+	group.state = "recovering"
+	group.attempts++
+	c.groups[jobID] = group
+	if err := c.persistLocked(); err != nil {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("persist recovery attempt: %w", err)
+	}
+	c.mu.Unlock()
+
+	executions, err := c.launchTrainingWorld(ctx, request)
+	c.mu.Lock()
+	group = c.groups[jobID]
+	if err != nil {
+		group.state = "failed"
+		c.groups[jobID] = group
+		_ = c.persistLocked()
+		c.mu.Unlock()
+		return nil, err
+	}
+	epoch := uint64(time.Now().UnixNano())
+	if epoch <= group.epoch {
+		epoch = group.epoch + 1
+	}
+	group.request = request
+	group.state = "running"
+	group.epoch = epoch
+	group.executions = executions
+	group.checkpoint.Epoch = epoch
+	c.groups[jobID] = group
+	if err := c.persistLocked(); err != nil {
+		c.mu.Unlock()
+		for _, node := range request.Nodes {
+			_ = c.stop(ctx, jobID, node)
+		}
+		return nil, fmt.Errorf("persist recovered training group: %w", err)
+	}
+	c.mu.Unlock()
+	return executions, nil
 }
 
 func (c *TrainingCoordinator) StopGroup(ctx context.Context, jobID string) error {
