@@ -93,7 +93,7 @@ function fabricWorkerState(value: JsonValue | undefined): FabricWorker['state'] 
     return 'ready'
 }
 
-function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
+export function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
     const root = objectValue(value)
     const capacityObject = objectValue(root?.capacity)
     const capacity: FabricCapacity = {
