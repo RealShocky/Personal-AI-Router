@@ -13,6 +13,7 @@ import type {
 import type { LogEntry, LogPage } from '@/shared/types/log'
 import type { NodeItemMetrics } from '@/shared/types/metrics'
 import type { NodeItem } from '@/shared/types/nodes'
+import type { HardwareCapabilities } from '@/shared/types/hardware'
 import type { ServiceError, ServiceErrorAction, ServiceErrorSeverity } from '@/shared/types/errors'
 import type { Workload, WorkloadState } from '@/shared/types/workloads'
 import type { ClusterNode, Invite } from '@/shared/types/cluster'
@@ -131,6 +132,7 @@ interface ModularNode {
     // does not report readiness yet (UI shows all GPUs). See the routing
     // limitations in docs/services-parity.md.
     inferenceHardwareIds?: string[]
+    capabilities?: HardwareCapabilities
     // The node's unified model list, enriched by the broker daemon from the
     // peer's engine-manager `/v1/models` (models-http) and carried on
     // `AvailableNode.models`. It replaces the retired per-engine proxy
@@ -202,6 +204,7 @@ interface ModularGpu {
     vramBytes: number
     vramUsedBytes: number
     utilizationPercent: number
+    backend: string
 }
 
 interface ModularCpu {
@@ -237,6 +240,16 @@ function booleanValue(value: JsonValue | undefined): boolean {
 function stringArrayValue(value: JsonValue | undefined): string[] {
     if (!Array.isArray(value)) return []
     return value.filter((entry): entry is string => typeof entry === 'string')
+}
+
+function capabilitiesValue(value: JsonValue | undefined): HardwareCapabilities | undefined {
+    const obj = objectValue(value)
+    if (!obj) return undefined
+    return {
+        backends: stringArrayValue(obj.backends),
+        distributedWorker: booleanValue(obj.distributed_worker),
+        distributedCoordinator: booleanValue(obj.distributed_coordinator)
+    }
 }
 
 /**
@@ -507,7 +520,8 @@ function gpuArrayValue(value: JsonValue | undefined): ModularGpu[] {
             name: stringValue(obj.name),
             vramBytes: numberValue(obj.vram_bytes),
             vramUsedBytes: numberValue(obj.vram_used_bytes),
-            utilizationPercent: numberValue(obj.utilization_percent)
+            utilizationPercent: numberValue(obj.utilization_percent),
+            backend: stringValue(obj.backend)
         })
     }
     return gpus.sort((left, right) => nvidiaGpuRank(left) - nvidiaGpuRank(right))
@@ -542,7 +556,8 @@ function sameGpu(left: ModularGpu, right: ModularGpu): boolean {
         left.name === right.name &&
         left.vramBytes === right.vramBytes &&
         left.vramUsedBytes === right.vramUsedBytes &&
-        left.utilizationPercent === right.utilizationPercent
+        left.utilizationPercent === right.utilizationPercent &&
+        left.backend === right.backend
     )
 }
 
@@ -579,13 +594,27 @@ function sameTelemetry(
     gpus: ModularGpu[],
     cpu: ModularCpu | null,
     memory: ModularMemory | null,
-    inferenceHardwareIds: string[] | undefined
+    inferenceHardwareIds: string[] | undefined,
+    capabilities: HardwareCapabilities | undefined
 ): boolean {
     return (
         sameGpuList(node.gpus, gpus) &&
         sameCpu(node.cpu, cpu) &&
         sameMemory(node.memory, memory) &&
-        sameInferenceHardwareIds(node.inferenceHardwareIds, inferenceHardwareIds)
+        sameInferenceHardwareIds(node.inferenceHardwareIds, inferenceHardwareIds) &&
+        sameCapabilities(node.capabilities, capabilities)
+    )
+}
+
+function sameCapabilities(
+    left: HardwareCapabilities | undefined,
+    right: HardwareCapabilities | undefined
+): boolean {
+    if (!left || !right) return left === right
+    return (
+        sameStringList(left.backends, right.backends) &&
+        left.distributedWorker === right.distributedWorker &&
+        left.distributedCoordinator === right.distributedCoordinator
     )
 }
 
@@ -642,7 +671,8 @@ function toNodeItem(node: ModularNode, selfId: string | null): NodeItem {
             })),
             ram: node.memory?.totalBytes ?? 0,
             storage: [],
-            inferenceHardwareIds: node.inferenceHardwareIds
+            inferenceHardwareIds: node.inferenceHardwareIds,
+            capabilities: node.capabilities
         },
         // The local node's OS is known from the running process; the backend's
         // discovery/node-info plane reports no OS for remote nodes, so they fall
@@ -862,7 +892,14 @@ function sameNode(left: ModularNode, right: ModularNode): boolean {
         // node's own ranking of where to reach it, and it drives the poll order.
         sameStringList(left.brokerAddresses, right.brokerAddresses) &&
         sameStringSet(left.proxyAddresses, right.proxyAddresses) &&
-        sameTelemetry(left, right.gpus, right.cpu, right.memory, right.inferenceHardwareIds) &&
+        sameTelemetry(
+            left,
+            right.gpus,
+            right.cpu,
+            right.memory,
+            right.inferenceHardwareIds,
+            right.capabilities
+        ) &&
         sameStringList(left.models, right.models) &&
         sameModelsByEngine(left.modelsByEngine, right.modelsByEngine) &&
         // A residency-only change (a model loaded/evicted with the installed set
@@ -1228,7 +1265,8 @@ class ModularBridgeState {
         const cpu = cpuValue(obj.cpu)
         const memory = memoryValue(obj.memory)
         const inferenceHardwareIds = optionalStringArrayValue(obj.inference_hardware_ids)
-        if (node.nodeInfoUp && sameTelemetry(node, gpus, cpu, memory, inferenceHardwareIds)) {
+        const capabilities = capabilitiesValue(obj.capabilities)
+        if (node.nodeInfoUp && sameTelemetry(node, gpus, cpu, memory, inferenceHardwareIds, capabilities)) {
             emitBridgePush('metrics:update', toMetrics(node))
             return
         }
@@ -1239,6 +1277,7 @@ class ModularBridgeState {
             cpu,
             memory,
             inferenceHardwareIds,
+            capabilities,
             nodeInfoUp: true
         })
     }

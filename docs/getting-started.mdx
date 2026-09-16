@@ -13,6 +13,10 @@ engine, and then point compatible applications at PAIR's local endpoint.
 > PAIR routes each request to one node. It does not pool GPU memory, combine
 > GPUs into a larger logical GPU, or split one model or request across systems.
 
+The separate distributed compute fabric is an explicit, opt-in runtime plane.
+It coordinates supported CPU/CUDA/Metal workers but does not create a
+transparent operating-system GPU or CPU.
+
 If a step does not go as described stop and check
 [Troubleshooting](troubleshooting.mdx). For example, nothing starts, no nodes appear, pairing
 stalls, or an application cannot connect. It is organized by symptom, so you can go
@@ -24,6 +28,19 @@ straight to the one you are seeing.
 > [Using the PAIR terminal interface](terminal-interface.mdx), which covers
 > starting PAIR, pairing, engines, models, and monitoring from a terminal. The
 > rest of this guide describes the desktop application.
+
+## Seeing the complete fleet
+
+On the Windows coordinator, launch **NVIDIA Personal AI Router** and open
+**Overview**. The regular node cards show PAIR engines and models. The
+**Distributed inference fabric** card shows the compute plane: worker state,
+runtime, backend, free host memory, heartbeat latency, checkpoint support, jobs,
+and executions. It refreshes automatically every five seconds. A worker marked
+`ready` is paired and healthy; it does not necessarily have a model loaded.
+
+For deployment of headless workers and portable bundles, continue with the
+[fabric operations runbook](fabric-operations.mdx). The [documentation map](README.md)
+lists every operator and developer guide.
 
 ## Before You Begin
 
@@ -317,6 +334,7 @@ manually if you run a restrictive firewall.
 | `14321` | Pairing and cluster membership |
 | `14322` | Model list served to cluster peers |
 | `14323` | Cluster-scoped remote engine control |
+| `14324` | Authenticated distributed compute fabric |
 
 ### Changing a Port
 

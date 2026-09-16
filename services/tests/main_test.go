@@ -31,6 +31,7 @@ var (
 	manualNodesBin   string
 	clusterMgrBin    string
 	schedulerBin     string
+	fabricBin        string
 )
 
 func TestMain(m *testing.M) {
@@ -56,6 +57,7 @@ func TestMain(m *testing.M) {
 	manualNodesBin = filepath.Join(tmpDir, "nvpair-manual-nodes"+ext)
 	clusterMgrBin = filepath.Join(tmpDir, "nvpair-cluster-manager"+ext)
 	schedulerBin = filepath.Join(tmpDir, "nvpair-job-scheduler"+ext)
+	fabricBin = filepath.Join(tmpDir, "nvpair-compute-fabric"+ext)
 
 	log.Println("building ollama-proxy...")
 	if err := goBuild(filepath.Join("..", "ollama-proxy"), proxyBin); err != nil {
@@ -141,6 +143,12 @@ func TestMain(m *testing.M) {
 	if err := goBuild(filepath.Join("..", "nvpair-job-scheduler"), schedulerBin); err != nil {
 		os.RemoveAll(tmpDir)
 		log.Fatalf("build nvpair-job-scheduler: %v", err)
+	}
+
+	log.Println("building nvpair-compute-fabric...")
+	if err := goBuild(filepath.Join("..", "nvpair-compute-fabric"), fabricBin); err != nil {
+		os.RemoveAll(tmpDir)
+		log.Fatalf("build nvpair-compute-fabric: %v", err)
 	}
 
 	code := m.Run()

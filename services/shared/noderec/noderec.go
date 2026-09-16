@@ -100,13 +100,16 @@ const (
 	// is pin-based mTLS (cluster peers only) because it performs privileged
 	// operations, and it binds only when the node is clustered.
 	ServiceEngineControl ServiceKey = "ec"
+	// ServiceComputeFabric is the cluster-mTLS control/data-plane endpoint used
+	// by distributed inference workers.
+	ServiceComputeFabric ServiceKey = "cf"
 )
 
 // serviceKeyOrder is the deterministic emit order for service ports in TXT.
 var serviceKeyOrder = []ServiceKey{
 	ServiceNodeInfo, ServiceOllama, ServiceLMStudio,
 	ServiceErrors, ServiceWorkload, ServiceCluster, ServiceEngineManager,
-	ServiceEngineControl,
+	ServiceEngineControl, ServiceComputeFabric,
 }
 
 // Transport is the connection policy for a service, derived (not advertised).
@@ -128,7 +131,7 @@ const (
 // Transport returns the static transport policy for the service.
 func (s ServiceKey) Transport() Transport {
 	switch s {
-	case ServiceErrors, ServiceWorkload, ServiceEngineControl:
+	case ServiceErrors, ServiceWorkload, ServiceEngineControl, ServiceComputeFabric:
 		return TransportMTLSWhenClustered
 	case ServiceCluster:
 		return TransportSplit

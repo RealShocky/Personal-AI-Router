@@ -362,6 +362,12 @@ func TestBrokerSpawnsAllModules(t *testing.T) {
 	}
 }
 
+func TestBrokerSpawnsComputeFabric(t *testing.T) {
+	_, _, stderr, cleanup := startBrokerWith(t, "--compute-fabric-path", fabricBin)
+	t.Cleanup(cleanup)
+	waitForStderr(t, stderr, regexp.MustCompile("compute fabric started"), 10*time.Second)
+}
+
 // TestBrokerEngineRelay verifies the broker relays an engine-manager
 // request: engine:get-installed round-trips to the supervised
 // engine-manager and returns its (read-only) installed-engines snapshot.

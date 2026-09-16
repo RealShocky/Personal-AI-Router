@@ -18,6 +18,16 @@
 ### Requests the backend handles but the bridge never calls (unused capability)
 - ⚠️ lmstudio-proxy → node/selected
 - ⚠️ lmstudio-proxy → node/set-local-backend
+- ⚠️ nvpair-compute-fabric → fabric:checkpoint
+- ⚠️ nvpair-compute-fabric → fabric:heartbeat
+- ⚠️ nvpair-compute-fabric → fabric:job-start
+- ⚠️ nvpair-compute-fabric → fabric:job-status
+- ⚠️ nvpair-compute-fabric → fabric:job-stop
+- ⚠️ nvpair-compute-fabric → fabric:job-submit
+- ⚠️ nvpair-compute-fabric → fabric:plan-group
+- ⚠️ nvpair-compute-fabric → fabric:reconcile
+- ⚠️ nvpair-compute-fabric → fabric:recover
+- ⚠️ nvpair-compute-fabric → fabric:rejoin
 - ⚠️ nvpair-engine-manager → engine:describe
 - ⚠️ nvpair-engine-manager → engine:errors
 - ⚠️ nvpair-engine-manager → engine:logs
@@ -93,6 +103,23 @@
 
 **Dynamic / unresolved notify sites (verify by hand — `npm run service-contracts` prints the line numbers):**
 - `notifyMethod (var)  (httpserver.go, 2 sites)`
+
+## nvpair-compute-fabric
+
+| Method | Direction | In bridge? |
+|---|---|---|
+| `ready` | notification (we consume) | ✅ yes |
+| `fabric:checkpoint` | request (we call) | ⚠️ not called |
+| `fabric:get-status` | request (we call) | ✅ yes |
+| `fabric:heartbeat` | request (we call) | ⚠️ not called |
+| `fabric:job-start` | request (we call) | ⚠️ not called |
+| `fabric:job-status` | request (we call) | ⚠️ not called |
+| `fabric:job-stop` | request (we call) | ⚠️ not called |
+| `fabric:job-submit` | request (we call) | ⚠️ not called |
+| `fabric:plan-group` | request (we call) | ⚠️ not called |
+| `fabric:reconcile` | request (we call) | ⚠️ not called |
+| `fabric:recover` | request (we call) | ⚠️ not called |
+| `fabric:rejoin` | request (we call) | ⚠️ not called |
 
 ## nvpair-engine-manager
 

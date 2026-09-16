@@ -838,6 +838,23 @@ class ModularSupervisor {
         // streams, and fans its schedule:priority out to the proxies via
         // node/set-priority (all broker-internal).
         passPath('--scheduler-path', 'job-scheduler')
+        passPath('--compute-fabric-path', 'compute-fabric')
+        const passEnv = (flag: string, name: string): void => {
+            const value = process.env[name]
+            if (value) args.push(flag, value)
+        }
+        // Explicit environment configuration keeps the first llama.cpp
+        // adapter opt-in and portable without inventing a second UI config
+        // schema. The broker still validates required combinations.
+        passEnv('--fabric-rpc-target', 'NVPAIR_FABRIC_RPC_TARGET')
+        passEnv('--fabric-rpc-server-path', 'NVPAIR_FABRIC_RPC_SERVER_PATH')
+        passEnv('--fabric-rpc-port', 'NVPAIR_FABRIC_RPC_PORT')
+        passEnv('--fabric-rpc-memory', 'NVPAIR_FABRIC_RPC_MEMORY')
+        passEnv('--fabric-llama-server-path', 'NVPAIR_FABRIC_LLAMA_SERVER_PATH')
+        passEnv('--fabric-llama-model', 'NVPAIR_FABRIC_LLAMA_MODEL')
+        passEnv('--fabric-llama-rpc', 'NVPAIR_FABRIC_LLAMA_RPC')
+        passEnv('--fabric-llama-port', 'NVPAIR_FABRIC_LLAMA_PORT')
+        passEnv('--fabric-rpc-relay-specs', 'NVPAIR_FABRIC_RPC_RELAY_SPECS')
         return [...args, ...this.logLevelArgs()]
     }
 

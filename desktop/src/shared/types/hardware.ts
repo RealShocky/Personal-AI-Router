@@ -7,6 +7,12 @@ export interface GpuInfo {
     vramTotal: number // in bytes
 }
 
+export interface HardwareCapabilities {
+    backends: string[]
+    distributedWorker: boolean
+    distributedCoordinator: boolean
+}
+
 export interface StorageInfo {
     name: string
     capacity: number // in bytes
@@ -29,4 +35,5 @@ export interface SystemTopology {
     // readiness yet) the UI shows all GPUs. See the routing limitations in
     // docs/services-parity.md.
     inferenceHardwareIds?: string[]
+    capabilities?: HardwareCapabilities
 }

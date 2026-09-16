@@ -29,6 +29,7 @@ import (
 
 type GPUInfo struct {
 	Name               string `json:"name"`
+	Backend            string `json:"backend,omitempty"`
 	VramBytes          uint64 `json:"vram_bytes,omitempty"`
 	VramUsedBytes      uint64 `json:"vram_used_bytes,omitempty"`
 	UtilizationPercent uint32 `json:"utilization_percent,omitempty"`
@@ -72,11 +73,12 @@ type MemoryInfo struct {
 }
 
 type NodeInfoResponse struct {
-	GPUs           []GPUInfo   `json:"GPUs"`
-	CPU            *CPUInfo    `json:"cpu,omitempty"`
-	Memory         *MemoryInfo `json:"memory,omitempty"`
-	TelemetryValid bool        `json:"telemetryValid"`
-	MSSince        int64       `json:"msSince"`
+	GPUs           []GPUInfo             `json:"GPUs"`
+	Capabilities   *HardwareCapabilities `json:"capabilities,omitempty"`
+	CPU            *CPUInfo              `json:"cpu,omitempty"`
+	Memory         *MemoryInfo           `json:"memory,omitempty"`
+	TelemetryValid bool                  `json:"telemetryValid"`
+	MSSince        int64                 `json:"msSince"`
 	// HostUUID is this node's stable per-host identity (the same value the
 	// node-scanner advertises as uuid= and the cluster uses as nodeUuid). It lets
 	// a consumer that reaches this node only over HTTP — notably a user-added
@@ -174,7 +176,7 @@ func buildResponse(gpus []GPUInfo, cpuStatic *CPUInfo, memTotal uint64, snap sta
 }
 
 func buildResponseAt(gpus []GPUInfo, cpuStatic *CPUInfo, memTotal uint64, snap statsSnapshot, hostUUID string, clusterUUID *string, now time.Time) []byte {
-	outGPUs := mergeGPUInventory(gpus, snap.GPUInventory)
+	outGPUs := annotateGPUBackends(mergeGPUInventory(gpus, snap.GPUInventory))
 	for i := range outGPUs {
 		gpu := &outGPUs[i]
 		if gpu.usesSystemMemoryUsage {
@@ -191,6 +193,7 @@ func buildResponseAt(gpus []GPUInfo, cpuStatic *CPUInfo, memTotal uint64, snap s
 	telemetryValid, msSince := telemetryStatus(snap.GPUSampledAt, now)
 	resp := NodeInfoResponse{
 		GPUs:           outGPUs,
+		Capabilities:   classifyCapabilities(outGPUs),
 		TelemetryValid: telemetryValid,
 		MSSince:        msSince,
 		HostUUID:       hostUUID,

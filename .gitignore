@@ -11,6 +11,10 @@ IMPORT_NOTES.md
 /pair-logs-*/
 token-map.json
 
+# Disposable live-fabric identities, logs, model probes, and local test caches.
+.tmp/
+/dist/
+
 # Binaries left behind by `go build` without -o inside a tool's module.
 /scripts/collectlogs/collectlogs
 /scripts/inference-dispatcher/inference-dispatcher

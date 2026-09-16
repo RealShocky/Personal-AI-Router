@@ -4,7 +4,7 @@
 
 # build.sh — NVIDIA Personal AI Router build script for Linux and macOS.
 #
-# Mirrors build.bat. Reads versions.json with jq, builds the thirteen worker
+# Mirrors build.bat. Reads versions.json with jq, builds the fourteen worker
 # binaries with -X main.Version=... ldflags, then copies them into the
 # repo-root staging bundle at:
 #
@@ -68,6 +68,7 @@ V_BROKER=$( jq -r --arg k 'nvpair-ui-broker'    '.components[$k]' "$VERSIONS_FIL
 V_CLUMGR=$( jq -r --arg k 'nvpair-cluster-manager' '.components[$k]' "$VERSIONS_FILE")
 V_SCHED=$(  jq -r --arg k 'nvpair-job-scheduler' '.components[$k]' "$VERSIONS_FILE")
 V_TUI=$(    jq -r --arg k 'nvpair-tui'          '.components[$k]' "$VERSIONS_FILE")
+V_FABRIC=$( jq -r --arg k 'nvpair-compute-fabric' '.components[$k]' "$VERSIONS_FILE")
 
 if [[ -z "$V_PRODUCT" || "$V_PRODUCT" == "null" ]]; then
     echo "ERROR: failed to parse versions.json" >&2
@@ -88,6 +89,7 @@ printf '  nvpair-ui-broker     = %s\n' "$V_BROKER"
 printf '  nvpair-cluster-mgr   = %s\n' "$V_CLUMGR"
 printf '  nvpair-job-scheduler = %s\n' "$V_SCHED"
 printf '  nvpair-tui           = %s\n' "$V_TUI"
+printf '  nvpair-compute-fabric= %s\n' "$V_FABRIC"
 echo
 
 echo "========================================"
@@ -97,7 +99,7 @@ echo
 
 build_subbinary() {
     local idx="$1" name="$2" version="$3"
-    echo "[$idx/13] Building $name (v$version)..."
+    echo "[$idx/14] Building $name (v$version)..."
     (cd "$ROOT/$name" && go build -ldflags "-X main.Version=$version" -o "$name" .)
     echo "      OK"
 }
@@ -114,6 +116,7 @@ build_subbinary 10 nvpair-ui-broker    "$V_BROKER"
 build_subbinary 11 nvpair-cluster-manager "$V_CLUMGR"
 build_subbinary 12 nvpair-job-scheduler   "$V_SCHED"
 build_subbinary 13 nvpair-tui            "$V_TUI"
+build_subbinary 14 nvpair-compute-fabric "$V_FABRIC"
 
 BIN_OUT="$ROOT/build/bin"
 
@@ -143,6 +146,7 @@ cp "$ROOT/nvpair-ui-broker/nvpair-ui-broker"       "$BIN_OUT/nvpair-ui-broker"
 cp "$ROOT/nvpair-cluster-manager/nvpair-cluster-manager" "$BIN_OUT/nvpair-cluster-manager"
 cp "$ROOT/nvpair-job-scheduler/nvpair-job-scheduler" "$BIN_OUT/nvpair-job-scheduler"
 cp "$ROOT/nvpair-tui/nvpair-tui"                   "$BIN_OUT/nvpair-tui"
+cp "$ROOT/nvpair-compute-fabric/nvpair-compute-fabric" "$BIN_OUT/nvpair-compute-fabric"
 
 echo
 echo "========================================"
@@ -162,4 +166,5 @@ printf '  UI Broker:    %s\n' "$BIN_OUT/nvpair-ui-broker"
 printf '  Cluster Mgr:  %s\n' "$BIN_OUT/nvpair-cluster-manager"
 printf '  Job Scheduler:%s\n' " $BIN_OUT/nvpair-job-scheduler"
 printf '  TUI:          %s\n' "$BIN_OUT/nvpair-tui"
+printf '  Compute Fabric:%s\n' " $BIN_OUT/nvpair-compute-fabric"
 echo

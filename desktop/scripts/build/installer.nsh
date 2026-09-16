@@ -137,6 +137,7 @@
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Personal AI Router Workload Manager (TCP 14320)" dir=in action=allow protocol=TCP localport=14320 program="$INSTDIR\resources\cli-bin\nvpair-workload-manager.exe" enable=yes profile=any remoteip=localsubnet'
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Personal AI Router Cluster Manager (TCP 14321)" dir=in action=allow protocol=TCP localport=14321 program="$INSTDIR\resources\cli-bin\nvpair-cluster-manager.exe" enable=yes profile=any remoteip=localsubnet'
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Personal AI Router Engine Manager (TCP 14322)" dir=in action=allow protocol=TCP localport=14322 program="$INSTDIR\resources\cli-bin\nvpair-engine-manager.exe" enable=yes profile=any remoteip=localsubnet'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Personal AI Router Compute Fabric (TCP 14324)" dir=in action=allow protocol=TCP localport=14324 program="$INSTDIR\resources\cli-bin\nvpair-compute-fabric.exe" enable=yes profile=any remoteip=localsubnet'
 !macroend
 
 !macro pairRemoveFirewallRules
@@ -158,6 +159,7 @@
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Personal AI Router Workload Manager (TCP 14320)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Personal AI Router Cluster Manager (TCP 14321)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Personal AI Router Engine Manager (TCP 14322)"'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Personal AI Router Compute Fabric (TCP 14324)"'
   ; Remove pre-rebrand rules left by older installations.
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="PAIR Ollama Proxy"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="PAIR LM Studio Proxy"'

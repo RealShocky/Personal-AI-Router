@@ -1,0 +1,701 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"crypto/tls"
+	"encoding/hex"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"os/exec"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"nvpair-shared/clustertrust"
+	"nvpair-shared/fabricwire"
+	"nvpair-shared/ipc"
+)
+
+var Version = "dev"
+
+func main() {
+	ipcPath := flag.String("ipc", "", "IPC endpoint: Unix socket or Windows named pipe")
+	timeout := flag.Duration("heartbeat-timeout", 5*time.Second, "worker heartbeat lease timeout")
+	httpPort := flag.Int("http-port", 0, "authenticated fabric HTTP port (0 disables the network endpoint)")
+	clusterDir := flag.String("cluster-dir", "", "cluster trust directory for the authenticated fabric endpoint")
+	stateDir := flag.String("state-dir", "", "durable coordinator state directory for checkpoints")
+	rpcTarget := flag.String("rpc-target", "", "loopback ggml-rpc-server target for the authenticated raw RPC tunnel")
+	relayListen := flag.String("rpc-relay-listen", "", "local TCP address to relay to --rpc-relay-url")
+	relayURL := flag.String("rpc-relay-url", "", "HTTPS fabric URL for a remote RPC tunnel")
+	relayPeerID := flag.String("rpc-relay-peer-id", "", "trusted peer UUID for a remote RPC tunnel (required when multiple peers are pinned)")
+	relaySpecs := flag.String("rpc-relay-specs", "", "semicolon-separated local|HTTPS fabric URL RPC relay pairs")
+	rpcServerPath := flag.String("rpc-server-path", "", "explicit ggml-rpc-server executable to supervise")
+	rpcPort := flag.Int("rpc-port", 50052, "loopback port for a supervised ggml-rpc-server")
+	rpcMemory := flag.String("rpc-memory", "", "optional memory argument passed to ggml-rpc-server")
+	llamaServerPath := flag.String("llama-server-path", "", "explicit llama-server executable for distributed inference")
+	llamaModel := flag.String("llama-model", "", "GGUF model path for the supervised llama-server")
+	llamaRPC := flag.String("llama-rpc", "", "comma-separated local RPC relay addresses passed to llama-server")
+	llamaPort := flag.Int("llama-port", 0, "loopback HTTP port for the supervised llama-server (0 disables it)")
+	coordinatorURL := flag.String("coordinator-url", "", "HTTPS fabric endpoint to join as a worker")
+	advertiseURL := flag.String("advertise-url", "", "HTTPS fabric endpoint advertised to the coordinator for authenticated RPC relays")
+	runtimeModelDigest := flag.String("model-digest", "", "SHA-256 model digest advertised by worker mode (computed from --llama-model when omitted)")
+	workerID := flag.String("worker-id", "", "stable worker identity for worker mode")
+	nodeID := flag.String("node-id", "", "stable host identity for worker mode")
+	runtimeName := flag.String("runtime", "cpu", "worker runtime label: cpu, cuda, or metal")
+	backend := flag.String("backend", "cpu", "comma-separated worker backends")
+	showVersion := flag.Bool("version", false, "print version and exit")
+	daemon := flag.Bool("daemon", false, "run without a JSON-RPC stdin session")
+	flag.Parse()
+	if *showVersion {
+		fmt.Println(Version)
+		return
+	}
+
+	var transport io.ReadWriteCloser
+	if *ipcPath == "" {
+		transport = newStdioTransport()
+	} else {
+		conn, err := ipc.Dial(*ipcPath)
+		if err != nil {
+			log.Fatalf("failed to connect to IPC endpoint %q: %v", *ipcPath, err)
+		}
+		transport = conn
+	}
+	defer transport.Close()
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	mgr := NewManager(*timeout)
+	jobs := NewJobStore(*stateDir)
+	executions := NewExecutionManager(ctx, *clusterDir)
+	codec := NewCodec(transport)
+	if *httpPort != 0 {
+		if *clusterDir == "" {
+			log.Printf("fabric HTTP endpoint disabled: no cluster directory")
+		} else {
+			go serveFabricHTTP(ctx, *httpPort, *clusterDir, mgr, *rpcTarget)
+		}
+	}
+	if *rpcServerPath != "" {
+		go superviseRPCServer(ctx, *rpcServerPath, *rpcPort, *rpcMemory)
+	}
+	if *llamaServerPath != "" {
+		if *llamaModel == "" || *llamaPort == 0 {
+			log.Fatalf("llama-server mode requires --llama-model and --llama-port")
+		}
+		go superviseLlamaServer(ctx, *llamaServerPath, *llamaModel, *llamaRPC, *llamaPort)
+	}
+	if *relayListen != "" || *relayURL != "" {
+		if *relayListen == "" || *relayURL == "" || *clusterDir == "" {
+			log.Fatalf("RPC relay mode requires --rpc-relay-listen, --rpc-relay-url, and --cluster-dir")
+		}
+		go serveRPCRelay(ctx, *relayListen, *relayURL, *clusterDir, *relayPeerID)
+	}
+	for _, spec := range strings.Split(*relaySpecs, ";") {
+		parts := strings.SplitN(spec, "|", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" || *clusterDir == "" {
+			if strings.TrimSpace(spec) != "" {
+				log.Printf("ignoring invalid RPC relay spec")
+			}
+			continue
+		}
+		go serveRPCRelay(ctx, parts[0], parts[1], *clusterDir, "")
+	}
+	if *coordinatorURL != "" {
+		if *workerID == "" || *nodeID == "" || *clusterDir == "" {
+			log.Fatalf("worker mode requires --worker-id, --node-id, and --cluster-dir")
+		}
+		modelDigest := *runtimeModelDigest
+		if modelDigest == "" && *llamaModel != "" {
+			digest, err := digestFile(*llamaModel)
+			if err != nil {
+				log.Printf("model digest unavailable: %v", err)
+			} else {
+				modelDigest = digest
+			}
+		}
+		go runWorkerHeartbeats(ctx, *coordinatorURL, *clusterDir, *workerID, *nodeID, *advertiseURL, *runtimeName, *backend, modelDigest, *llamaServerPath != "", *timeout)
+	}
+
+	go func() {
+		ticker := time.NewTicker(*timeout)
+		defer ticker.Stop()
+		for {
+			select {
+			case now := <-ticker.C:
+				mgr.Reconcile(now)
+				executions.RecoverFailed(mgr, jobs)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	if err := codec.Notify("ready", map[string]string{"version": Version}); err != nil {
+		log.Fatalf("failed to announce readiness: %v", err)
+	}
+	if *daemon {
+		<-ctx.Done()
+		return
+	}
+	for ctx.Err() == nil {
+		msg, err := codec.Read()
+		if err != nil {
+			if err == io.EOF || ctx.Err() != nil {
+				return
+			}
+			log.Printf("JSON-RPC read error: %v", err)
+			continue
+		}
+		handleMessage(codec, mgr, jobs, executions, cancel, msg)
+	}
+}
+
+func runWorkerHeartbeats(ctx context.Context, coordinatorURL, clusterDir, workerID, nodeID, endpoint, runtimeName, backend, modelDigest string, checkpointSupport bool, timeout time.Duration) {
+	mesh := clustertrust.Open(clusterDir)
+	epoch := uint64(time.Now().UnixNano())
+	backends := make([]string, 0, 2)
+	for _, item := range strings.Split(backend, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			backends = append(backends, item)
+		}
+	}
+	if len(backends) == 0 {
+		backends = []string{"cpu"}
+	}
+	client := &http.Client{Timeout: timeout}
+	state := fabricwire.WorkerReady
+	var probeLatency uint64
+	var transport *http.Transport
+	for {
+		mesh.Refresh()
+		tlsConfig, ok := mesh.ClientTLSConfigAny()
+		if !ok {
+			log.Printf("worker heartbeat trust unavailable worker=%s", workerID)
+		} else {
+			if transport == nil {
+				transport = &http.Transport{TLSClientConfig: tlsConfig}
+				client.Transport = transport
+			}
+			heartbeat := fabricwire.Heartbeat{
+				WorkerID:           workerID,
+				NodeID:             nodeID,
+				Endpoint:           endpoint,
+				State:              state,
+				Epoch:              epoch,
+				Runtime:            runtimeName,
+				Backends:           backends,
+				ModelDigests:       modelDigests(modelDigest),
+				CheckpointSupport:  checkpointSupport,
+				ProbeLatencyMillis: probeLatency,
+				MemoryFree:         systemMemoryFree(),
+			}
+			probeStart := time.Now()
+			postErr := postFabricJSON(ctx, client, coordinatorURL+"/v1/fabric/heartbeat", heartbeat)
+			probeLatency = uint64(time.Since(probeStart).Milliseconds())
+			if postErr != nil {
+				log.Printf("worker heartbeat failed worker=%s err=%v", workerID, postErr)
+				epoch++
+				if postFabricRejoin(ctx, client, coordinatorURL+"/v1/fabric/rejoin", workerID, epoch) {
+					state = fabricwire.WorkerReady
+					log.Printf("worker rejoined worker=%s epoch=%d", workerID, epoch)
+				} else {
+					state = fabricwire.WorkerSuspect
+					log.Printf("worker rejoin rejected worker=%s epoch=%d", workerID, epoch)
+				}
+			} else {
+				state = fabricwire.WorkerReady
+			}
+		}
+		timer := time.NewTimer(timeout / 2)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+}
+
+func modelDigests(digest string) []string {
+	if digest == "" {
+		return nil
+	}
+	return []string{digest}
+}
+
+func digestFile(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+func postFabricJSON(ctx context.Context, client *http.Client, endpoint string, value any) error {
+	body, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("fabric endpoint returned HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func postFabricRejoin(ctx context.Context, client *http.Client, endpoint, workerID string, epoch uint64) bool {
+	body, err := json.Marshal(map[string]any{"workerId": workerID, "epoch": epoch})
+	if err != nil {
+		return false
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return false
+	}
+	var result struct {
+		Rejoined bool `json:"rejoined"`
+	}
+	return json.NewDecoder(resp.Body).Decode(&result) == nil && result.Rejoined
+}
+
+func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Manager, rpcTarget string) {
+	mesh := clustertrust.Open(clusterDir)
+	go mesh.Watch(ctx, nil)
+	config := mesh.ServerTLSConfig()
+	server := &http.Server{
+		Addr:      fmt.Sprintf("0.0.0.0:%d", port),
+		TLSConfig: config,
+		Handler:   fabricHTTPHandler(mesh, mgr, rpcTarget),
+	}
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		log.Printf("fabric HTTP listen failed: %v", err)
+		return
+	}
+	tlsListener := tls.NewListener(listener, config)
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+		_ = tlsListener.Close()
+	}()
+	log.Printf("fabric HTTP endpoint listening on %s", server.Addr)
+	if err := server.Serve(tlsListener); err != nil && ctx.Err() == nil {
+		log.Printf("fabric HTTP stopped: %v", err)
+	}
+}
+
+func fabricHTTPHandler(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/fabric/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if _, ok := mesh.VerifyClientPin(r); !ok {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		writeJSON(w, map[string]any{"workers": mgr.Workers()})
+	})
+	mux.HandleFunc("/v1/fabric/rpc", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodConnect {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if rpcTarget == "" {
+			http.Error(w, "RPC target is not configured", http.StatusNotFound)
+			return
+		}
+		if _, ok := mesh.VerifyClientPin(r); !ok {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		backend, err := net.DialTimeout("tcp", rpcTarget, 5*time.Second)
+		if err != nil {
+			http.Error(w, "RPC target unavailable", http.StatusBadGateway)
+			return
+		}
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			_ = backend.Close()
+			http.Error(w, "tunnel unsupported", http.StatusInternalServerError)
+			return
+		}
+		clientConn, rw, err := hijacker.Hijack()
+		if err != nil {
+			_ = backend.Close()
+			return
+		}
+		_, _ = rw.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n")
+		_ = rw.Flush()
+		bridgeConnectionsFromReader(backend, rw.Reader, clientConn)
+	})
+	mux.HandleFunc("/v1/fabric/heartbeat", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if _, ok := mesh.VerifyClientPin(r); !ok {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		var heartbeat fabricwire.Heartbeat
+		if err := json.NewDecoder(r.Body).Decode(&heartbeat); err != nil {
+			http.Error(w, "invalid heartbeat", http.StatusBadRequest)
+			return
+		}
+		if err := mgr.Heartbeat(heartbeat, time.Now()); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, map[string]bool{"accepted": true})
+	})
+	mux.HandleFunc("/v1/fabric/rejoin", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if _, ok := mesh.VerifyClientPin(r); !ok {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		var params struct {
+			WorkerID string `json:"workerId"`
+			Epoch    uint64 `json:"epoch"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, "invalid rejoin", http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, map[string]bool{"rejoined": mgr.Rejoin(params.WorkerID, params.Epoch, time.Now())})
+	})
+	return mux
+}
+
+func superviseRPCServer(ctx context.Context, executable string, port int, memory string) {
+	args := []string{"--host", "127.0.0.1", "--port", fmt.Sprintf("%d", port)}
+	if memory != "" {
+		args = append(args, "--mem", memory)
+	}
+	args = append(args, "-c")
+	superviseChild(ctx, "ggml-rpc-server", executable, args)
+}
+
+func superviseLlamaServer(ctx context.Context, executable, model, rpcAddresses string, port int) {
+	args := []string{"--model", model, "--host", "127.0.0.1", "--port", fmt.Sprintf("%d", port), "--n-gpu-layers", "all"}
+	if rpcAddresses != "" {
+		args = append(args, "--rpc", rpcAddresses)
+	}
+	superviseChild(ctx, "llama-server", executable, args)
+}
+
+func superviseChild(ctx context.Context, name, executable string, args []string) {
+	backoff := time.Second
+	for ctx.Err() == nil {
+		cmd := exec.CommandContext(ctx, executable, args...)
+		cmd.Stdout = os.Stderr
+		cmd.Stderr = os.Stderr
+		err := cmd.Run()
+		if ctx.Err() != nil {
+			return
+		}
+		log.Printf("%s stopped: %v; restarting", name, err)
+		timer := time.NewTimer(backoff)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return
+		}
+		if backoff < 30*time.Second {
+			backoff *= 2
+		}
+	}
+}
+
+func serveRPCRelay(ctx context.Context, listenAddr, remoteURL, clusterDir, peerID string) {
+	relay, err := openRPCRelay(ctx, listenAddr, remoteURL, clusterDir)
+	if err != nil {
+		log.Printf("RPC relay listen failed: %v", err)
+		return
+	}
+	defer relay.Close()
+	for {
+		conn, err := relay.listener.Accept()
+		if err != nil {
+			if ctx.Err() == nil {
+				log.Printf("RPC relay accept failed: %v", err)
+			}
+			return
+		}
+		go relayRPCConnection(ctx, conn, relay.remoteURL, relay.clusterDir, peerID)
+	}
+}
+
+type rpcRelay struct {
+	listener   net.Listener
+	remoteURL  string
+	clusterDir string
+}
+
+func openRPCRelay(ctx context.Context, listenAddr, remoteURL, clusterDir string) (*rpcRelay, error) {
+	listener, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		return nil, err
+	}
+	relay := &rpcRelay{listener: listener, remoteURL: remoteURL, clusterDir: clusterDir}
+	go func() {
+		<-ctx.Done()
+		_ = relay.Close()
+	}()
+	return relay, nil
+}
+
+func (r *rpcRelay) Addr() string {
+	return r.listener.Addr().String()
+}
+
+func (r *rpcRelay) Close() error {
+	return r.listener.Close()
+}
+
+func relayRPCConnection(ctx context.Context, local net.Conn, remoteURL, clusterDir, peerID string) {
+	defer local.Close()
+	mesh := clustertrust.Open(clusterDir)
+	mesh.Refresh()
+	var config *tls.Config
+	var ok bool
+	if peerID != "" {
+		config, ok = mesh.ClientTLSConfig(peerID)
+	} else {
+		config, ok = mesh.ClientTLSConfigAny()
+	}
+	if !ok {
+		return
+	}
+	u, err := url.Parse(remoteURL)
+	if err != nil || u.Host == "" || u.Scheme != "https" {
+		log.Printf("RPC relay rejected remote URL peer=%s", peerID)
+		return
+	}
+	log.Printf("RPC relay dialing peer=%s host=%s", peerID, u.Host)
+	dialer := &tls.Dialer{NetDialer: &net.Dialer{Timeout: 5 * time.Second}, Config: config}
+	remote, err := dialer.DialContext(ctx, "tcp", u.Host)
+	if err != nil {
+		log.Printf("RPC relay dial failed peer=%s: %v", peerID, err)
+		return
+	}
+	defer remote.Close()
+	path := u.EscapedPath()
+	if path == "" || path == "/" {
+		path = "/v1/fabric/rpc"
+	}
+	if _, err := fmt.Fprintf(remote, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", path, u.Host); err != nil {
+		return
+	}
+	reader := bufio.NewReader(remote)
+	response, err := http.ReadResponse(reader, nil)
+	if err != nil {
+		log.Printf("RPC relay response read failed peer=%s: %v", peerID, err)
+		return
+	}
+	if response.StatusCode != http.StatusOK {
+		log.Printf("RPC relay rejected by peer=%s status=%d", peerID, response.StatusCode)
+		return
+	}
+	log.Printf("RPC relay connected peer=%s", peerID)
+	bridgeConnectionsFromReader(local, reader, remote)
+}
+
+func bridgeConnections(a, b net.Conn) {
+	bridgeConnectionsFromReader(a, bufio.NewReader(b), b)
+}
+
+func bridgeConnectionsFromReader(a net.Conn, reader *bufio.Reader, b net.Conn) {
+	done := make(chan struct{}, 2)
+	go func() { _, _ = io.Copy(a, reader); _ = a.Close(); _ = b.Close(); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(b, a); _ = a.Close(); _ = b.Close(); done <- struct{}{} }()
+	<-done
+}
+
+func writeJSON(w http.ResponseWriter, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(value)
+}
+
+func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *ExecutionManager, cancel context.CancelFunc, msg *Message) {
+	if !msg.IsRequest() {
+		return
+	}
+	switch msg.Method {
+	case "fabric:heartbeat":
+		var heartbeat fabricwire.Heartbeat
+		if err := json.Unmarshal(msg.Params, &heartbeat); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid heartbeat")
+			return
+		}
+		if err := mgr.Heartbeat(heartbeat, time.Now()); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, map[string]bool{"accepted": true})
+	case "fabric:rejoin":
+		var params struct {
+			WorkerID string `json:"workerId"`
+			Epoch    uint64 `json:"epoch"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid rejoin")
+			return
+		}
+		_ = codec.Respond(msg.ID, map[string]bool{"rejoined": mgr.Rejoin(params.WorkerID, params.Epoch, time.Now())})
+	case "fabric:reconcile":
+		mgr.Reconcile(time.Now())
+		_ = codec.Respond(msg.ID, map[string]bool{"reconciled": true})
+	case "fabric:plan-group":
+		var request fabricwire.GroupRequest
+		if err := json.Unmarshal(msg.Params, &request); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid group request")
+			return
+		}
+		plan, err := mgr.PlanGroup(request)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32001, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, plan)
+	case "fabric:job-start":
+		var request StartRequest
+		if err := json.Unmarshal(msg.Params, &request); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid job start")
+			return
+		}
+		plan, err := mgr.PlanGroup(request.Group)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32001, err.Error())
+			return
+		}
+		job := JobRecord{JobID: request.JobID, GroupID: plan.GroupID, ModelDigest: request.ModelDigest, Epoch: plan.Epoch}
+		if err := jobs.Submit(job); err != nil {
+			_ = codec.RespondError(msg.ID, -32003, err.Error())
+			return
+		}
+		execution, err := executions.Start(request, plan)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32004, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, execution)
+	case "fabric:job-stop":
+		var params struct {
+			JobID string `json:"jobId"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil || executions.Stop(params.JobID) != nil {
+			_ = codec.RespondError(msg.ID, -32005, "job is not running")
+			return
+		}
+		_ = codec.Respond(msg.ID, map[string]bool{"stopped": true})
+	case "fabric:job-status":
+		var params struct {
+			JobID string `json:"jobId"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid job status")
+			return
+		}
+		status, ok := executions.Status(params.JobID)
+		if !ok {
+			_ = codec.RespondError(msg.ID, -32006, "job not found")
+			return
+		}
+		_ = codec.Respond(msg.ID, status)
+	case "fabric:get-status":
+		_ = codec.Respond(msg.ID, map[string]any{"workers": mgr.Workers(), "jobs": jobs.Jobs(), "executions": executions.Statuses()})
+	case "fabric:job-submit":
+		var job JobRecord
+		if err := json.Unmarshal(msg.Params, &job); err != nil || jobs.Submit(job) != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid or duplicate job")
+			return
+		}
+		_ = codec.Respond(msg.ID, job)
+	case "fabric:checkpoint":
+		var checkpoint fabricwire.Checkpoint
+		if err := json.Unmarshal(msg.Params, &checkpoint); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid checkpoint")
+			return
+		}
+		if checkpoint.Filename != "" {
+			if err := executions.SaveCheckpoint(checkpoint); err != nil {
+				_ = codec.RespondError(msg.ID, -32602, err.Error())
+				return
+			}
+		}
+		if err := jobs.SaveCheckpoint(checkpoint); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid checkpoint")
+			return
+		}
+		_ = codec.Respond(msg.ID, checkpoint)
+	case "fabric:recover":
+		var params struct {
+			JobID   string `json:"jobId"`
+			GroupID string `json:"groupId"`
+			Epoch   uint64 `json:"epoch"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid recovery")
+			return
+		}
+		checkpoint, err := jobs.Recover(params.JobID, params.GroupID, params.Epoch)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32002, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, checkpoint)
+	case "shutdown":
+		_ = codec.Respond(msg.ID, nil)
+		cancel()
+	default:
+		_ = codec.RespondError(msg.ID, -32601, "method not found")
+	}
+}

@@ -528,6 +528,7 @@ A default installation listens on these ports:
 | `14321` | Pairing and cluster membership |
 | `14322` | Model list served to cluster peers |
 | `14323` | Cluster-scoped remote engine control |
+| `14324` | Authenticated distributed compute fabric |
 
 The `143xx` listeners are the peer surfaces from
 [Node-to-Node Communication](#node-to-node-communication). Their numbers are
@@ -643,6 +644,26 @@ network can send, so those signals only mark the old record as a suspect.
 Discovery confirms the node's identity before dropping that record. A stale
 duplicate therefore cannot linger, and nothing can displace a peer by claiming
 its address.
+
+### Distributed Compute Fabric
+
+The distributed fabric is a separate runtime plane from ordinary proxy routing.
+The Windows PAIR node can act as a coordinator while paired Linux, macOS, and
+Windows nodes contribute CPU, CUDA, or Metal workers. Workers authenticate with
+the existing cluster identity, send leases and heartbeats, and are removed from
+new assignments before quarantine when their lease expires. A fresh handshake
+and capability probe are required before they rejoin.
+
+The fabric can make a supported model runtime appear as one logical inference
+engine, but it does not create a transparent shared Windows CPU, GPU, or VRAM
+device. Distributed jobs use explicit runtime adapters, epochs, and checkpoints;
+a worker failure resumes only when the adapter can restore safely. Otherwise the
+job fails explicitly instead of duplicating output. Mixed CUDA/Metal/CPU groups
+are opt-in and require a compatibility and network-performance probe.
+
+PAIR continues to use Electron as the operator UI. WinUI 3 is not required for
+the coordinator or worker services, and custom CUDA kernels or DLLs are added
+only after profiling identifies a runtime bottleneck.
 
 ### Manual Nodes
 

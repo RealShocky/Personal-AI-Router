@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+﻿// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 import type { WsInvokeChannel, WsInvokeRequest, WsInvokeResponse } from '@/shared/types/ws-channels'
 import type { ClusterInitialSnapshot } from '@/shared/types/bootstrap'
 import type { ClusterNode, ClusterNodeIdentity, Invite } from '@/shared/types/cluster'
+import type { FabricStatus, FabricWorker, FabricJob, FabricExecution } from '@/shared/types/fabric'
 import type { EngineType } from '@/shared/types/engines'
 import type { ServiceError } from '@/shared/types/errors'
 import {
@@ -82,6 +83,43 @@ async function getClusterMembers(): Promise<ClusterNode[]> {
     }
 }
 
+function stringArray(value: JsonValue | undefined): string[] {
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function fabricWorkerState(value: JsonValue | undefined): FabricWorker['state'] {
+    const state = stringValue(value)
+    if (state === 'suspect' || state === 'quarantined' || state === 'draining' || state === 'failed') return state
+    return 'ready'
+}
+
+function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
+    const root = objectValue(value)
+    const workers: FabricWorker[] = Array.isArray(root?.workers)
+        ? root.workers.map(item => {
+              const obj = objectValue(item)
+              return {
+                  workerId: stringValue(obj?.workerId),
+                  nodeId: stringValue(obj?.nodeId),
+                  state: fabricWorkerState(obj?.state),
+                  runtime: stringValue(obj?.runtime),
+                  backends: stringArray(obj?.backends),
+                  modelDigests: stringArray(obj?.modelDigests),
+                  checkpointSupport: booleanValue(obj?.checkpointSupport),
+                  probeLatencyMillis: numberValue(obj?.probeLatencyMillis),
+                  memoryFree: numberValue(obj?.memoryFree)
+              }
+          })
+        : []
+    const jobs: FabricJob[] = Array.isArray(root?.jobs)
+        ? root.jobs.map(item => { const obj = objectValue(item); return { jobId: stringValue(obj?.jobId), groupId: stringValue(obj?.groupId), modelDigest: stringValue(obj?.modelDigest), epoch: numberValue(obj?.epoch), state: stringValue(obj?.state) } })
+        : []
+    const executions: FabricExecution[] = Array.isArray(root?.executions)
+        ? root.executions.map(item => { const obj = objectValue(item); return { jobId: stringValue(obj?.jobId), pid: numberValue(obj?.pid), state: stringValue(obj?.state), rpcPeers: numberValue(obj?.rpcPeers), httpPort: numberValue(obj?.httpPort) } })
+        : []
+    return { workers, jobs, executions }
+}
+
 /** Map our `EngineType` onto the `nvpair-engine-manager` engine identifier. */
 export function engineManagerEngineName(engineType: EngineType): string {
     return engineType === 'lm-studio' ? 'lmstudio' : engineType
@@ -95,8 +133,8 @@ function proxyEngineFor(engineType: EngineType): ProxyEngine | null {
 async function handleGetSelfId(): Promise<string | null> {
     const state = getModularBridgeState()
     const identity = await getClusterIdentity()
-    // Self is the stable node UUID — the same key discovery/proxy/workloads/
-    // errors use — never the hostname. `nodeUuid` is minted at cluster-manager
+    // Self is the stable node UUID â€” the same key discovery/proxy/workloads/
+    // errors use â€” never the hostname. `nodeUuid` is minted at cluster-manager
     // startup, so it is available immediately.
     if (identity.nodeUuid) {
         state.setSelfId(identity.nodeUuid)
@@ -145,7 +183,7 @@ async function toggleLocalEngine(engine: string, engineType: EngineType): Promis
             { engine },
             error => {
                 // A send failure or rejected stop has no resolving
-                // engine:state-changed — clear the optimistic spinner and report.
+                // engine:state-changed â€” clear the optimistic spinner and report.
                 getModularBridgeState().clearPendingEngineOp(engineType)
                 supervisor.reportError(
                     `Failed to ${running ? 'stop' : 'start'} ${engine}: ${error}`,
@@ -174,7 +212,7 @@ async function toggleLocalEngine(engine: string, engineType: EngineType): Promis
  * optimistic op below.
  *
  * A **running adopted** engine (one PAIR attached to instead of launching) is
- * refused by the backend — PAIR can't move a process it didn't start — so we clear
+ * refused by the backend â€” PAIR can't move a process it didn't start â€” so we clear
  * the optimistic op and surface a clear "stop it in its own app first" error.
  * Remaining start-options limitation (env/args) is documented in
  * docs/services-parity.md#engine-lifecycle.
@@ -213,7 +251,7 @@ async function applyEnginePort(
  * Set the local Ollama proxy's listen port. Routed through the broker's
  * `proxy:set-port` relay, which persists the port (`proxy-port.json`, restored on
  * restart), live-rebinds the proxy, and **steers it clear of any running engine
- * port** (engines win — a bumped proxy surfaces a sticky `warning` on the errors
+ * port** (engines win â€” a bumped proxy surfaces a sticky `warning` on the errors
  * pipeline). The proxy re-emits `proxy:ready` with the actually-bound port, which
  * the bridge already folds into `status.proxyPort`, so success needs no further
  * action here beyond surfacing a failure.
@@ -242,17 +280,17 @@ async function applyProxyPort(proxyEngine: ProxyEngine, port: number): Promise<v
 /**
  * Apply the engine server port and/or proxy port for the local node in one safe
  * transaction. The UI sends only the ports that changed; this picks an ordering
- * so the engine and proxy never fight over a port mid-flight — including a full
- * swap (server↔proxy).
+ * so the engine and proxy never fight over a port mid-flight â€” including a full
+ * swap (serverâ†”proxy).
  *
  * The backend has no atomic multi-port API, so we serialize the steps here:
- *  - **single port** → the focused `applyEnginePort` / `applyProxyPort` helper;
- *  - **both, engine stopped** → persist the engine port (no start, respecting
+ *  - **single port** â†’ the focused `applyEnginePort` / `applyProxyPort` helper;
+ *  - **both, engine stopped** â†’ persist the engine port (no start, respecting
  *    the user's stopped state), then rebind the proxy;
- *  - **both, running, no collision** → bounce the engine onto its new port
- *    first (the failure-prone step — a running *adopted* engine is refused —
+ *  - **both, running, no collision** â†’ bounce the engine onto its new port
+ *    first (the failure-prone step â€” a running *adopted* engine is refused â€”
  *    so the proxy is left untouched if it throws), then rebind the proxy;
- *  - **both, running, collision/swap** → stop the engine to free its port, move
+ *  - **both, running, collision/swap** â†’ stop the engine to free its port, move
  *    the proxy (the engine's old port is now free for the proxy's target),
  *    persist the engine's new port, then start it back up.
  *
@@ -342,7 +380,7 @@ async function applyEnginePorts(
         engineRunning = booleanValue(status?.running)
         currentEnginePort = numberValue(status?.port)
     } catch {
-        // Status read failed — treat as stopped and take the safe persist path.
+        // Status read failed â€” treat as stopped and take the safe persist path.
         engineRunning = false
     }
 
@@ -389,7 +427,7 @@ async function applyEnginePorts(
             { engine },
             MODULAR_ENGINE_LIFECYCLE_CALL_TIMEOUT_MS
         )
-        // The stop's engine:state-changed cleared the optimistic op — re-assert
+        // The stop's engine:state-changed cleared the optimistic op â€” re-assert
         // it so the UI keeps a spinner through the rest of the transaction.
         state.beginLocalEngineOp(engineType, 'starting')
         await supervisor.callProxy(proxyEngine, 'set-port', { port: proxyPort })
@@ -410,7 +448,7 @@ async function applyEnginePorts(
         )
     } catch (err) {
         // No engine:state-changed follows a refused/failed step, so clear the
-        // optimistic op now and report — the UI reverts to the real ports.
+        // optimistic op now and report â€” the UI reverts to the real ports.
         state.failLocalEngineOp(engine, 'start')
         supervisor.reportError(
             `Failed to apply ${engine} ports: ${getErrorString(err)}`,
@@ -425,7 +463,7 @@ async function applyEnginePorts(
  * model operations are **fire-and-forget**: the engine-manager runs each in its
  * own goroutine and reports progress (`engine:install-progress`), completion
  * (`engine:state-changed`), and failures (`errors:report`) through push events.
- * We must not await these RPCs — a download or model pull runs for minutes and
+ * We must not await these RPCs â€” a download or model pull runs for minutes and
  * would trip the request timeout, fabricating a failure while the operation is
  * actually succeeding.
  */
@@ -511,7 +549,7 @@ function routeEngineManagerCommand(payload: WsInvokeRequest<'engine:command'>): 
             // Both ports persist on this node: the engine HTTP server port via
             // engine:set-port (manifest override), the proxy port via the broker's
             // proxy:set-port (which steers it clear of running engine ports). The
-            // bridge diffs + orders them safely (incl. swaps). Local only — the
+            // bridge diffs + orders them safely (incl. swaps). Local only â€” the
             // backend exposes no remote port control.
             void applyEnginePorts(engine, payload.engineType, payload.enginePort, payload.proxyPort)
             break
@@ -640,12 +678,12 @@ function routeRemoteEngineCommand(payload: WsInvokeRequest<'engine:command'>): v
         case 'uninstall':
         case 'update':
             refuseRemote(
-                `${payload.command} is only available on the local node — remote uninstall/update is not supported yet.`
+                `${payload.command} is only available on the local node â€” remote uninstall/update is not supported yet.`
             )
             break
         case 'setPorts':
             refuseRemote(
-                'Port changes only apply to this machine — remote engine port control is not supported.'
+                'Port changes only apply to this machine â€” remote engine port control is not supported.'
             )
             break
         case 'deleteModel':
@@ -674,11 +712,11 @@ async function handleEngineCommand(payload?: WsInvokeRequest<'engine:command'>):
     if (!payload) return null
     const supervisor = getModularSupervisor()
 
-    // "Load" loads a model into the engine's memory/VRAM — never proxy routing.
+    // "Load" loads a model into the engine's memory/VRAM â€” never proxy routing.
     // Proxy node selection is owned by the backend nvpair-job-scheduler (it drives
     // node/set-priority via the broker); PAIR UI never pins node/select, and a user
     // clicking "Load" must not pin a route. Ollama loads via its `run_model` HTTP
-    // action, LM Studio via its `load_model` CLI action — both handled locally in
+    // action, LM Studio via its `load_model` CLI action â€” both handled locally in
     // routeEngineManagerCommand.
 
     // Remote peers: `nvpair-engine-manager` exposes `engine:remote-*` client methods
@@ -880,7 +918,7 @@ async function handleClusterRespondToInvite(
  * cluster-manager, which evicts its EAP-NOOB Server session (invalidating the
  * PIN so a later Completion is rejected) and best-effort signals the joiner to
  * drop its pending-inbound invite. Returns the updated `Invite` (`canceled`).
- * Prunes any matching entry from the authoritative set for good measure — the
+ * Prunes any matching entry from the authoritative set for good measure â€” the
  * outbound invite lives in the renderer pairing hook, so this is normally a
  * no-op, but it keeps a stray copy from lingering.
  */
@@ -910,7 +948,7 @@ async function handleNodeRemoveMember(
 
     // `payload.nodeId` is the node's UUID, but the manual-nodes store and the
     // broker's `node/remove` relay key a manual entry by the name it was added
-    // with — never the UUID. Map the UUID back through the node's reachable
+    // with â€” never the UUID. Map the UUID back through the node's reachable
     // addresses to the persisted entry so it is actually pruned (and does not
     // reappear on the next replay). If it is not a manual node (no address match)
     // fall back to the display hostname, then the raw id; both are harmless
@@ -928,7 +966,7 @@ async function handleNodeRemoveMember(
         // now rejects a self-targeted `nodes:remove`). `cluster:leave` announces a
         // signed self-tombstone to peers, drops every pin/member, resets to
         // unclustered, then emits `cluster:identity-changed` (empty clusterId) and
-        // `nodes:changed` (empty) — both already consumed by the supervisor, which
+        // `nodes:changed` (empty) â€” both already consumed by the supervisor, which
         // persists "unclustered" to node-settings and collapses the UI. No manual
         // identity clear / roster push needed.
         supervisor.clearAutoCreatedSoloForInvite()
@@ -954,6 +992,8 @@ const EMPTY_SERVICE_BRIDGE_HANDLERS: BridgeHandlerMap = {
     'nodes:remove-member': payload => handleNodeRemoveMember(payload),
 
     'discovery:get-nodes': () => getModularBridgeState().getAvailableNodes(),
+
+    'fabric:get-status': async () => parseFabricStatus(await callCluster('fabric:get-status')),
 
     'cluster:get-initial': () => handleClusterGetInitial(),
     'cluster:invite-node': payload => handleClusterInviteNode(payload),

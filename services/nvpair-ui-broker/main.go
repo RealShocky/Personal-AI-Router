@@ -33,6 +33,16 @@ func main() {
 	settingsPath := flag.String("settings-path", "", "path to nvpair-node-settings binary (default: ./nvpair-node-settings in the current working directory)")
 	clusterMgrPath := flag.String("cluster-manager-path", "", "path to nvpair-cluster-manager binary (default: ./nvpair-cluster-manager in the current working directory)")
 	schedulerPath := flag.String("scheduler-path", "", "path to nvpair-job-scheduler binary (default: ./nvpair-job-scheduler in the current working directory)")
+	fabricPath := flag.String("compute-fabric-path", "", "path to nvpair-compute-fabric binary (default: ./nvpair-compute-fabric in the current working directory)")
+	fabricRPCTarget := flag.String("fabric-rpc-target", "", "loopback ggml-rpc-server target for this node")
+	fabricRPCServerPath := flag.String("fabric-rpc-server-path", "", "explicit ggml-rpc-server executable for this node")
+	fabricRPCPort := flag.Int("fabric-rpc-port", 50052, "loopback ggml-rpc-server port")
+	fabricRPCMemory := flag.String("fabric-rpc-memory", "", "optional ggml-rpc-server memory limit")
+	fabricLlamaServerPath := flag.String("fabric-llama-server-path", "", "explicit llama-server executable for the coordinator")
+	fabricLlamaModel := flag.String("fabric-llama-model", "", "GGUF model path for the coordinator llama-server")
+	fabricLlamaRPC := flag.String("fabric-llama-rpc", "", "comma-separated local RPC relay addresses")
+	fabricLlamaPort := flag.Int("fabric-llama-port", 0, "loopback llama-server port")
+	fabricRPCRelaySpecs := flag.String("fabric-rpc-relay-specs", "", "semicolon-separated local|HTTPS fabric URL RPC relay pairs")
 	clusterDirFlag := flag.String("cluster-dir", "", "cluster config dir (node.crt/node.key + trusted/) the broker passes to its mDNS workers (nvpair-errors, nvpair-workload-manager, nvpair-node-info, nvpair-node-scanner, nvpair-manual-nodes) to enable cluster-scoped inter-node mTLS; defaults to the per-user Nvidia Corporation/Personal AI Router cluster/ dir, where nvpair-cluster-manager mints them")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	resolveLevel := applog.RegisterFlag(nil, slog.LevelInfo)
@@ -218,6 +228,14 @@ func main() {
 		slog.Warn("scheduler binary not found; broker will run without job scheduling", "err", err)
 		resolvedScheduler = ""
 	}
+	resolvedFabric, err := resolveComputeFabricPath(*fabricPath)
+	if err != nil {
+		if *fabricPath != "" {
+			fatalf("compute-fabric binary: %v", err)
+		}
+		slog.Warn("compute-fabric binary not found; running without distributed compute coordination", "err", err)
+		resolvedFabric = ""
+	}
 
 	var transport io.ReadWriteCloser
 	if *ipcPath != "" {
@@ -260,12 +278,37 @@ func main() {
 		settings:      resolvedSettings,
 		clusterMgr:    resolvedClusterMgr,
 		scheduler:     resolvedScheduler,
+		fabric:        resolvedFabric,
+		fabricArgs:    computeFabricArgs(*fabricRPCTarget, *fabricRPCServerPath, *fabricRPCPort, *fabricRPCMemory, *fabricLlamaServerPath, *fabricLlamaModel, *fabricLlamaRPC, *fabricLlamaPort, *fabricRPCRelaySpecs),
 		clusterDir:    clusterDir,
 	}
 	if err := NewBroker(codec, paths).Serve(ctx); err != nil && ctx.Err() == nil {
 		fatalf("broker error: %v", err)
 	}
 	slog.Info("shutdown complete")
+}
+
+func computeFabricArgs(rpcTarget, rpcServerPath string, rpcPort int, rpcMemory, llamaServerPath, llamaModel, llamaRPC string, llamaPort int, relaySpecs string) []string {
+	args := make([]string, 0, 16)
+	if rpcTarget != "" {
+		args = append(args, "--rpc-target", rpcTarget)
+	}
+	if rpcServerPath != "" {
+		args = append(args, "--rpc-server-path", rpcServerPath, "--rpc-port", fmt.Sprintf("%d", rpcPort))
+		if rpcMemory != "" {
+			args = append(args, "--rpc-memory", rpcMemory)
+		}
+	}
+	if llamaServerPath != "" {
+		args = append(args, "--llama-server-path", llamaServerPath, "--llama-model", llamaModel, "--llama-port", fmt.Sprintf("%d", llamaPort))
+		if llamaRPC != "" {
+			args = append(args, "--llama-rpc", llamaRPC)
+		}
+	}
+	if relaySpecs != "" {
+		args = append(args, "--rpc-relay-specs", relaySpecs)
+	}
+	return args
 }
 
 // defaultClusterDir resolves the cluster subtree this node's workers read and
@@ -359,6 +402,10 @@ func resolveClusterManagerPath(override string) (string, error) {
 
 func resolveSchedulerPath(override string) (string, error) {
 	return resolveSiblingBinary(override, "nvpair-job-scheduler", "--scheduler-path")
+}
+
+func resolveComputeFabricPath(override string) (string, error) {
+	return resolveSiblingBinary(override, "nvpair-compute-fabric", "--compute-fabric-path")
 }
 
 // resolveSiblingBinary locates a worker binary the broker spawns. It

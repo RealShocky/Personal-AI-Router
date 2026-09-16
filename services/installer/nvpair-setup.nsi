@@ -180,6 +180,7 @@ Section "Install"
   ; nvpair-job-scheduler is pure stdio (no listening port, no mDNS), so it needs no
   ; firewall rule — it runs under nvpair-ui-broker and only ranks nodes for the proxies.
   File "..\build\bin\nvpair-job-scheduler.exe"
+  File "..\build\bin\nvpair-compute-fabric.exe"
   ; nvpair-ui-broker is the primary entry point: it talks JSON-RPC over stdio / a
   ; named pipe only, so it needs no inbound firewall rule. The graphical UI
   ; bundled alongside this backend launches it to drive the NVPAIR API, and it
@@ -261,6 +262,7 @@ Section "Install"
   ; to paired peers over mutually-authenticated TLS on TCP :14323. It only binds
   ; when this node is clustered, but the rule is added unconditionally like the rest.
   nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NVPAIR Engine Manager Control (TCP 14323)" dir=in action=allow protocol=TCP localport=14323 program="$INSTDIR\bin\nvpair-engine-manager.exe" enable=yes profile=any remoteip=localsubnet'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="NVPAIR Compute Fabric (TCP 14324)" dir=in action=allow protocol=TCP localport=14324 program="$INSTDIR\bin\nvpair-compute-fabric.exe" enable=yes profile=any remoteip=localsubnet'
 SectionEnd
 
 ;---------------------------------------
@@ -286,6 +288,7 @@ Section "Uninstall"
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NVPAIR mDNS Cluster Manager (UDP 5353)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NVPAIR Engine Manager (TCP 14322)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NVPAIR Engine Manager Control (TCP 14323)"'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="NVPAIR Compute Fabric (TCP 14324)"'
 
   ; Remove files
   Delete "$INSTDIR\bin\ollama-proxy.exe"
@@ -296,6 +299,7 @@ Section "Uninstall"
   Delete "$INSTDIR\bin\nvpair-workload-manager.exe"
   Delete "$INSTDIR\bin\nvpair-errors.exe"
   Delete "$INSTDIR\bin\nvpair-engine-manager.exe"
+  Delete "$INSTDIR\bin\nvpair-compute-fabric.exe"
   Delete "$INSTDIR\bin\nvpair-node-settings.exe"
   Delete "$INSTDIR\bin\nvpair-cluster-manager.exe"
   Delete "$INSTDIR\bin\nvpair-job-scheduler.exe"

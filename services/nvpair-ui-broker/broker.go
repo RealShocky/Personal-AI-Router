@@ -160,6 +160,8 @@ type Broker struct {
 	settingsPath      string
 	clusterMgrPath    string
 	schedulerPath     string
+	fabricPath        string
+	fabricArgs        []string
 	clusterDir        string
 	// Managed-port state is prepared before proxy startup and read by the proxy
 	// supervisor/reader goroutines. Ollama commits its pending backend move after
@@ -220,6 +222,7 @@ type Broker struct {
 	settings      *rpcWorker
 	clusterMgr    *clusterManagerProcess
 	scheduler     *rpcWorker
+	fabric        *rpcWorker
 
 	// Per-worker supervisors own the (re)spawn + crash-detect + restart
 	// lifecycle of each worker. nil when the worker's binary wasn't resolved
@@ -235,6 +238,7 @@ type Broker struct {
 	settingsSup      *supervisor
 	clusterMgrSup    *supervisor
 	schedulerSup     *supervisor
+	fabricSup        *supervisor
 
 	// subMu guards subscribed. The discovery:nodes-changed stream is
 	// opt-in: emitNodesChanged (called on the scanner-event goroutine)
@@ -337,6 +341,8 @@ type workerPaths struct {
 	settings      string
 	clusterMgr    string
 	scheduler     string
+	fabric        string
+	fabricArgs    []string
 	// clusterDir is the cluster-manager config dir (node.crt/node.key +
 	// trusted/). Threaded to every worker that does cluster-scoped inter-node
 	// mTLS so they serve/dial pinned peers once this node joins a cluster.
@@ -376,6 +382,8 @@ func NewBroker(codec *Codec, paths workerPaths) *Broker {
 		settingsPath:       paths.settings,
 		clusterMgrPath:     paths.clusterMgr,
 		schedulerPath:      paths.scheduler,
+		fabricPath:         paths.fabric,
+		fabricArgs:         append([]string(nil), paths.fabricArgs...),
 		clusterDir:         paths.clusterDir,
 		store:              newDiscoveryStore(),
 		telemetry:          newTelemetryCache(),
@@ -552,6 +560,18 @@ func (b *Broker) getScheduler() *rpcWorker {
 	b.workersMu.Lock()
 	defer b.workersMu.Unlock()
 	return b.scheduler
+}
+
+func (b *Broker) setFabric(w *rpcWorker) {
+	b.workersMu.Lock()
+	b.fabric = w
+	b.workersMu.Unlock()
+}
+
+func (b *Broker) getFabric() *rpcWorker {
+	b.workersMu.Lock()
+	defer b.workersMu.Unlock()
+	return b.fabric
 }
 
 func (b *Broker) setClusterMgr(c *clusterManagerProcess) {
@@ -869,6 +889,24 @@ func (b *Broker) spawnJobScheduler() (supervisedHandle, error) {
 		slog.Info("replayed telemetry to scheduler", "count", telemetryReplayed)
 	}
 	slog.Info("scheduler started", "path", b.schedulerPath, "pid", w.cmd.Process.Pid)
+	return w, nil
+}
+
+func (b *Broker) spawnComputeFabric() (supervisedHandle, error) {
+	// The fabric coordinator keeps its stdio JSON-RPC control surface for the
+	// broker and exposes its worker endpoint separately over cluster mTLS.
+	args := append([]string{"--http-port", fmt.Sprintf("%d", computeFabricHTTPPort)}, b.clusterDirArgs()...)
+	args = append(args, b.fabricArgs...)
+	if stateDir, err := appdir.Path("fabric"); err == nil {
+		args = append(args, "--state-dir", stateDir)
+	}
+	w, err := startRPCWorker("compute-fabric", b.fabricPath, args, nil)
+	if err != nil {
+		return nil, err
+	}
+	b.setFabric(w)
+	b.registerService(noderec.RegisterParams{Service: noderec.ServiceComputeFabric, Port: computeFabricHTTPPort})
+	slog.Info("compute fabric started", "path", b.fabricPath, "pid", w.cmd.Process.Pid)
 	return w, nil
 }
 
@@ -1823,6 +1861,14 @@ func (b *Broker) Serve(ctx context.Context) error {
 	b.schedulerSup = b.startOptionalWorker("scheduler", b.schedulerPath, b.spawnJobScheduler, func() { b.setScheduler(nil) })
 	if b.schedulerSup != nil {
 		defer b.schedulerSup.Stop()
+	}
+	// nvpair-compute-fabric owns the coordinator-side worker lifecycle state
+	// machine. It is deliberately optional while authenticated network transport
+	// is being brought online; when present, the broker owns restart and shutdown
+	// exactly like every other auxiliary worker.
+	b.fabricSup = b.startOptionalWorker("compute-fabric", b.fabricPath, b.spawnComputeFabric, func() { b.setFabric(nil) })
+	if b.fabricSup != nil {
+		defer b.fabricSup.Stop()
 	}
 
 	if err := b.codec.Notify("app:ready", ReadyParams{Version: Version}); err != nil {
@@ -2959,6 +3005,10 @@ func (b *Broker) handleMessage(msg *Message) {
 			b.relayToSettings(msg)
 			return
 		}
+		if strings.HasPrefix(msg.Method, "fabric:") {
+			b.relayToFabric(msg)
+			return
+		}
 		// cluster:* and nodes:* are the cluster-manager's namespaces; relay
 		// them verbatim to nvpair-cluster-manager.
 		if strings.HasPrefix(msg.Method, "cluster:") || strings.HasPrefix(msg.Method, "nodes:") {
@@ -2969,6 +3019,25 @@ func (b *Broker) handleMessage(msg *Message) {
 			log.Printf("failed to send error response: %v", err)
 		}
 	}
+}
+
+func (b *Broker) relayToFabric(msg *Message) {
+	fabric := b.getFabric()
+	if fabric == nil {
+		_ = b.codec.RespondError(msg.ID, -32000, "compute fabric not available")
+		return
+	}
+	method := strings.TrimPrefix(msg.Method, "fabric:")
+	result, rpcErr, err := fabric.Call(context.Background(), "fabric:"+method, msg.Params)
+	if err != nil {
+		_ = b.codec.RespondError(msg.ID, -32000, fmt.Sprintf("compute fabric call failed: %v", err))
+		return
+	}
+	if rpcErr != nil {
+		_ = b.codec.RespondError(msg.ID, rpcErr.Code, rpcErr.Message)
+		return
+	}
+	_ = b.codec.Respond(msg.ID, result)
 }
 
 // relayToProxy forwards a proxy:<method> request to ollama-proxy as

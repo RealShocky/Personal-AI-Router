@@ -26,6 +26,7 @@ namespace:
 | `nvpair-cluster-manager` | Node identity, trusted-node store, PIN pairing | `cluster:*`, `nodes:*` |
 | `nvpair-workload-manager` | Cluster workload relay between this node and peers | `workloads:*` |
 | `nvpair-job-scheduler` | Ranks nodes by pending work and GPU pressure for the proxies | _internal_ |
+| `nvpair-compute-fabric` | Authenticated distributed-worker lifecycle and lease coordinator | _internal_ |
 | `nvpair-errors` | Service-error datastore and cross-node sync | `errors:*` |
 | `nvpair-node-settings` | Typed per-node settings store | `settings/*` |
 | `nvpair-manual-nodes` | User-added nodes, merged into the discovery snapshot | `node/*`, `nodes/list` |
@@ -77,6 +78,10 @@ Bidirectional newline-delimited JSON-RPC 2.0 — same conventions as every other
 | `--settings-path <path>` | `./nvpair-node-settings[.exe]` in the CWD | Explicit path to the `nvpair-node-settings` binary the broker spawns for the typed settings store. Same optional semantics as `--node-info-path` |
 | `--cluster-manager-path <path>` | `./nvpair-cluster-manager[.exe]` in the CWD | Explicit path to the `nvpair-cluster-manager` binary the broker spawns for cluster pairing / membership. Same optional semantics as `--node-info-path` |
 | `--scheduler-path <path>` | `./nvpair-job-scheduler[.exe]` in the CWD | Explicit path to the `nvpair-job-scheduler` binary the broker spawns for responsive, node-wide workload and GPU-pressure ranking. Same optional semantics as `--node-info-path` |
+| `--compute-fabric-path <path>` | `./nvpair-compute-fabric[.exe]` in the CWD | Explicit path to the broker-supervised distributed compute coordinator. It is optional until a cluster trust directory exists. |
+| `--fabric-rpc-server-path <path>` / `--fabric-rpc-target <addr>` | unset | Configure a loopback `ggml-rpc-server` worker behind the fabric mTLS tunnel. |
+| `--fabric-llama-server-path <path>` / `--fabric-llama-model <path>` | unset | Configure an explicit llama.cpp coordinator process; it remains disabled unless a model and `--fabric-llama-port` are supplied. |
+| `--fabric-rpc-relay-specs <specs>` | unset | Start multiple loopback RPC relays using `local-address|https-fabric-url;...` specs. |
 | `--cluster-dir <path>` | `cluster/` in the per-user data dir (`%LocalAppData%\Nvidia Corporation\Personal AI Router` on Windows, `~/.config/Nvidia Corporation/Personal AI Router` on Linux) | Cluster config dir (`node.crt`/`node.key` + `trusted/`, minted by `nvpair-cluster-manager`). Threaded to the cluster-scoped workers (`nvpair-errors`, `nvpair-workload-manager`, `nvpair-node-scanner`, `nvpair-manual-nodes`, and `nvpair-engine-manager`), each of which derives its membership from it continuously — so a create, join, or leave takes effect in place and the broker does **not** restart them. The broker also passes the parent of this path to `nvpair-cluster-manager` as `--config-dir`, so the only writer of the cluster dir and the workers reading it cannot resolve different directories. `nvpair-node-info` is excluded — it stays plain HTTP even when clustered (see the repository-root `SECURITY.md`). Defaults so cluster mTLS auto-activates with nothing to pass; with an empty or cert-less dir this node is not a member, so it serves and dials no inter-node cluster traffic at all |
 | `--log-level <lvl>` | _(env `NVPAIR_LOG_LEVEL` or `info`)_ | `debug` \| `info` \| `warn` \| `error` |
 | `--version` | | Print version and exit |

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+﻿// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 import { type IEngineApi, createEngineApi } from '@/ui/api/engine-api'
@@ -13,6 +13,7 @@ import type { NodeItem } from '@/shared/types/nodes'
 import type { ServiceError } from '@/shared/types/errors'
 import type { NodeItemMetrics } from '@/shared/types/metrics'
 import type { Workload } from '@/shared/types/workloads'
+import type { FabricStatus } from '@/shared/types/fabric'
 import type { AppInitialSnapshot, ClusterInitialSnapshot } from '@/shared/types/bootstrap'
 
 // ---------------------------------------------------------------------------
@@ -79,6 +80,11 @@ export interface IDiscoveryApi {
     onNodesChanged(callback: (nodes: AvailableNode[]) => void): () => void
 }
 
+export interface IFabricApi {
+    /** Read-only coordinator snapshot for the logical distributed inference fabric. */
+    getStatus(): Promise<FabricStatus>
+}
+
 export interface IWorkloadsApi {
     /** Fetch all active workloads (inference jobs). */
     getInitial(): Promise<Record<string, Workload>>
@@ -120,12 +126,13 @@ export interface IPairApi {
     discovery: IDiscoveryApi
     engines: IEngineApi
     workloads: IWorkloadsApi
+    fabric: IFabricApi
     errors: IErrorsApi
     metrics: IMetricsApi
 }
 
 // ---------------------------------------------------------------------------
-// Factory — thin binding over the typed service transport.
+// Factory â€” thin binding over the typed service transport.
 // ---------------------------------------------------------------------------
 
 export function createPairApi(transport: ServiceTransport): IPairApi {
@@ -169,6 +176,9 @@ export function createPairApi(transport: ServiceTransport): IPairApi {
             onNodesChanged: cb => transport.subscribePush('discovery:nodes-changed', cb)
         },
         engines: createEngineApi(transport),
+        fabric: {
+            getStatus: () => transport.invoke('fabric:get-status')
+        },
         workloads: {
             getInitial: () => transport.invoke('workloads:get-initial'),
             onUpsert: cb => transport.subscribePush('workloads:upsert', cb),

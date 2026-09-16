@@ -36,6 +36,14 @@ need is in one place. Open **Settings > Service**, where you can:
 If you file a support request, use **Save logs** on the same screen to write the
 logs somewhere you can attach them, and include the PAIR version shown there.
 
+## A Distributed Worker Disappears
+
+The fabric should stop assigning new stages to a worker after its lease expires,
+quarantine it, and accept it again only after a fresh handshake and capability
+probe. A distributed job resumes only when its runtime adapter supports the
+checkpoint; otherwise it reports an explicit failure. A worker that is merely
+slow should not be force-restarted while it is serving a valid stage.
+
 ## Discovery Is Empty
 
 PAIR discovers peers on the local network. If **Add node** or

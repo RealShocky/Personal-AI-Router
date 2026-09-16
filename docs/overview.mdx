@@ -131,6 +131,12 @@ For the trust boundaries in detail, refer to
   the same services.
 - Visibility into nodes, engines, models, workloads, and service errors.
 
+Each node also reports hardware capability hints for future distributed
+runtimes: CPU, NVIDIA/CUDA candidates, Apple/Metal candidates, and whether the
+node can participate as a distributed worker or coordinator. These hints do not
+change current Ollama or LM Studio routing and do not represent a shared
+operating-system CPU, GPU, or VRAM device.
+
 ## What PAIR Does Not Do
 
 PAIR has these limits:

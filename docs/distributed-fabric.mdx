@@ -1,0 +1,108 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
+# Distributed Compute Fabric
+
+The distributed fabric is PAIR's explicit compute plane for making several
+trusted machines act as one logical inference runtime.
+
+## Recommended topology
+
+Use the Windows workstation as the operator and coordinator first:
+
+```text
+Windows PAIR coordinator
+    ├── DGX CUDA worker
+    ├── RTX 5060 CUDA worker
+    ├── MacBook Pro Metal worker
+    └── CPU/RAM workers
+```
+
+The coordinator does not turn these devices into one operating-system GPU. A
+distributed runtime must explicitly place model layers or tensor work and send
+activations between workers.
+
+## Worker states
+
+Workers move through `discovered`, `authenticated`, `probing`, `ready`,
+`leased`, `serving`, `suspect`, and `quarantined`. Missed heartbeats stop new
+assignments before quarantine. A worker that returns must complete a fresh
+mutual-TLS handshake and capability probe; stale worker epochs cannot resume an
+old job.
+
+## Device groups
+
+CPU, CUDA, and Metal are separate capabilities. Homogeneous groups are the
+default. Mixed groups require an explicit compatibility probe and measured
+latency/bandwidth check. A DGX and RTX 5060 may be faster as separate request
+targets than as a single distributed model group, depending on the model and
+network.
+
+## Failure and recovery
+
+Distributed jobs carry a group ID, model digest, epoch, and checkpoint stage.
+When a worker fails, the coordinator quarantines it, rebuilds a compatible group,
+and resumes only from a valid checkpoint supported by the runtime adapter. A
+runtime that cannot restore a stage reports failure rather than silently replaying
+tokens or side effects.
+
+## Current implementation status
+
+Hardware capability reporting is implemented. Existing Ollama and LM Studio
+routing is unchanged. The coordinator is broker-supervised, packaged as
+`nvpair-compute-fabric`, and exposes the cluster-mTLS `cf` service on TCP
+`14324`. Worker mode sends authenticated heartbeats and performs a fresh epoch
+rejoin after quarantine. Its llama.cpp adapter can supervise a loopback
+`ggml-rpc-server`, create authenticated RPC relays, and launch a local
+OpenAI-compatible `llama-server` using those relays.
+
+Do not expose a raw distributed-runtime port to the LAN. Only the PAIR
+cluster-mTLS endpoint should be reachable, and only after the participating
+machines have been paired.
+The coordinator now performs capability-aware ready-worker group planning and
+persists job checkpoints by epoch. For llama.cpp, slot checkpoints can be saved and restored through the server slot API when `--slot-save-path` is configured. A failed group can therefore be replaced by
+a new group and resumed from the last accepted stage when the runtime adapter
+supports that stage. Group planning is not tensor execution: it will reject
+unsupported or under-capacity groups rather than silently mixing devices.
+
+The coordinator JSON-RPC surface includes `fabric:job-start`, `fabric:job-stop`, and `fabric:job-status`; job start derives authenticated loopback relays from worker heartbeat endpoints and launches the configured llama.cpp server. The worker must advertise its fabric HTTPS endpoint with `--advertise-url`.
+
+The desktop launcher accepts explicit adapter configuration through
+`NVPAIR_FABRIC_*` environment variables (for example
+`NVPAIR_FABRIC_LLAMA_SERVER_PATH`, `NVPAIR_FABRIC_LLAMA_MODEL`,
+`NVPAIR_FABRIC_LLAMA_RPC`, and `NVPAIR_FABRIC_RPC_RELAY_SPECS`). This keeps distributed execution opt-in while
+allowing the Windows coordinator to be operated from the normal Electron UI.
+
+## Verified Windows and WSL path
+
+The first end-to-end smoke path is Windows as coordinator plus Ubuntu WSL2 as a CPU worker. The worker runs `nvpair-compute-fabric`, supervises `ggml-rpc-server`, and the local `llama-server` connects to the coordinator's authenticated relay. The status endpoint is:
+
+```text
+GET https://<coordinator>/v1/fabric/status
+```
+
+The response must show the worker as `ready` and include a recent heartbeat. Inference must also be tested through the worker's OpenAI-compatible server; an accepted heartbeat alone does not prove model execution.
+
+WSL2 can see the Windows NVIDIA device through `/usr/lib/wsl/lib/nvidia-smi`. For an RTX 5060, use a CUDA toolkit that supports compute capability 12.0 (CUDA 12.8 or newer). CUDA 12.0 cannot compile `compute_120`, so a CPU worker is the correct fallback until the newer toolkit and CUDA llama.cpp build are available. NVIDIA's WSL guidance says to install the toolkit package only and not a Linux driver inside WSL.
+
+## Fleet worker installation
+
+For Linux mini-PCs, use scripts/install-fabric-worker.sh after the node has been paired and its cluster directory has been provisioned. It installs the worker as a systemd service with automatic process restart and passes `--daemon`, so it is not dependent on a broker JSON-RPC stdin session. The installer defaults to a 10-second heartbeat timeout for higher-latency links; override `PAIR_HEARTBEAT_TIMEOUT` when appropriate. Set PAIR_RUNTIME=cpu and PAIR_BACKEND=cpu for CPU-only machines; use PAIR_RUNTIME=cuda only after a local CUDA probe succeeds. The installer accepts an optional PAIR_FABRIC_SHA256 and never accepts or writes a private SSH key.
+
+For a MacBook Pro, use scripts/install-fabric-worker-macos.sh after pairing. It installs a per-user launchd agent with `KeepAlive`, defaults to `PAIR_RUNTIME=metal` and `PAIR_BACKEND=metal,cpu`, and uses the same `--daemon` worker protocol. Set `PAIR_RPC_SERVER_PATH` to a Metal-capable `ggml-rpc-server` build when the node is used for llama.cpp RPC execution; capability detection alone does not guarantee that an engine build supports Metal.
+
+## AWS and other remote nodes
+
+An AWS Ubuntu instance or a CPU-only mini-PC can join as a CPU worker. It needs the Linux `nvpair-compute-fabric` binary, a paired cluster identity, and TCP `14324` reachability to the Windows coordinator. A reverse SSH tunnel is useful for a private smoke test; production enrollment should use a narrowly scoped firewall rule and mutual TLS. Do not copy the private key used to reach an AWS instance into the repository or a node bundle.
+
+## What “one machine” means here
+
+The fabric can expose one logical inference service by explicitly routing requests, model stages, or runtime RPC work. It cannot make Windows Task Manager, CUDA, DirectML, or Metal report one pooled CPU/GPU/VRAM device. CPU RAM can be used as a model offload/cache tier, but it is not GPU VRAM and usually adds latency. The scheduler therefore keeps hardware capabilities distinct, measures the network, and only forms a group when the selected runtime adapter supports that execution mode.
+
+### Current live test evidence
+
+The Windows↔WSL RTX 5060 path has passed authenticated heartbeat, CUDA model load, and generated completion through the fabric relay. The AWS Ubuntu node has passed paired mTLS enrollment, fresh CPU heartbeats, and an end-to-end completion through the authenticated HTTPS CONNECT relay. The DGX Spark path has also passed a real WSL2 llama.cpp GPU-offload completion: the WSL client reported an `RPC0` device, the isolated DGX helper reported CUDA buffer allocation and graph execution, and the request returned HTTP 200. The DGX helper was built from the same llama.cpp revision as the WSL client in an isolated directory; existing DGX projects were not changed. The smoke test uses private tunnels only to reach otherwise-private nodes; production deployment should use controlled network routes.
+
+When more than one peer is pinned, configure a relay with the exact destination identity using `--rpc-relay-peer-id <node-uuid>`. This prevents a relay from presenting an arbitrary local cluster certificate to a heterogeneous peer.

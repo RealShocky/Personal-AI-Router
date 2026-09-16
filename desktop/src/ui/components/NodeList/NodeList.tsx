@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+﻿// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 import 'overlayscrollbars/styles/overlayscrollbars.css'
@@ -11,6 +11,7 @@ import { useOverviewNodes } from '@/ui/hooks/useOverviewNodes'
 import NodeCardDetails from './NodeCardDetails'
 import { CONNECTIONS_WIDTH } from '@/ui/constants/app'
 import OfflineNode from './OfflineNode'
+import FabricStatusCard from './FabricStatusCard'
 
 const SCROLLBAR_OPTIONS = {
     scrollbars: { autoHide: 'leave', autoHideDelay: 800 }
@@ -38,6 +39,7 @@ function NodeList() {
 
     return (
         <Stack className="grow min-w-0 h-full max-w-300">
+            <FabricStatusCard />
             <OverlayScrollbarsComponent
                 className="node-list-scroll-container"
                 style={{

@@ -162,6 +162,10 @@ invited.
 The [Getting Started Guide](docs/getting-started.mdx) covers the same ground in
 detail, plus pairing, ports, and connecting your own applications.
 
+For the distributed compute fabric, see the [fabric architecture and live
+capability notes](docs/distributed-fabric.mdx) and the [complete operations,
+pairing, and portable-bundle runbook](docs/fabric-operations.mdx).
+
 ## Uninstalling
 
 Removing PAIR and removing your data are separate steps, and the default is to
@@ -272,6 +276,14 @@ Feedback from people running PAIR on their own hardware is more useful to us tha
 any plan written in advance.
 
 ## Contributing and governance
+
+The distributed compute fabric is documented in
+[Distributed compute fabric](docs/distributed-fabric.mdx). It is an explicit
+runtime plane for trusted CPU, CUDA, and Metal workers with capability-aware
+groups, quarantine/rejoin, and checkpointed recovery. It does not claim to
+create a transparent operating-system GPU or CPU.
+The complete [documentation map](docs/README.md) indexes operator, deployment,
+troubleshooting, architecture, and developer guides.
 
 - [Contributing](CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)

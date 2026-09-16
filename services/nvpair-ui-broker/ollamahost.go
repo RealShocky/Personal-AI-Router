@@ -27,6 +27,7 @@ const (
 	errorsHTTPPort         = 14319
 	workloadHTTPPort       = 14320
 	clusterManagerHTTPPort = 14321
+	computeFabricHTTPPort  = 14324
 
 	lmstudioProxyPortFile = "lmstudio-proxy-port.json"
 )

@@ -1,0 +1,213 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
+# PAIR Fabric operations
+
+This is the deployment runbook for the distributed compute fabric. It covers
+pairing, worker installation, portable bundles, health checks, and recovery.
+The fabric is a logical inference service: it can route or explicitly execute
+runtime work across trusted workers, but it cannot make Windows, Linux, CUDA, or
+Metal expose one pooled OS CPU/GPU/VRAM device. CPU RAM is model storage or
+offload memory, not VRAM.
+
+## 1. Choose the coordinator
+
+Run the PAIR desktop application on the Windows workstation. It supervises the
+broker and fabric coordinator. Keep TCP `14321` reachable for cluster pairing
+and TCP `14324` reachable only between paired fabric members. Do not expose raw
+llama.cpp RPC ports (`50052`, `51001`, etc.) to the LAN or internet.
+
+Workers may be Windows, Linux, macOS, WSL2, an AWS VM, a DGX, or a mini-PC.
+Install the worker on each machine; install an engine/model only where that
+machine has enough memory and a compatible backend.
+
+## 1.1 View the fleet
+
+The Windows Electron dashboard is the operator console. Open the normal PAIR
+window and go to the Overview/node list. The **Distributed inference fabric**
+card refreshes every five seconds and lists each worker's state, runtime,
+backends, free host memory, heartbeat probe latency, checkpoint support, jobs,
+and executions. The regular node cards remain the engine/model view; the fabric
+card is the compute-plane view. A worker showing `ready` means authenticated
+and admitted for scheduling, not that a model is currently loaded.
+
+For automation or diagnostics, query the authenticated coordinator endpoint:
+
+```text
+GET https://coordinator:15424/v1/fabric/status
+```
+
+The development smoke coordinator uses `15424`; a normal installation uses the
+fabric service port `14324`. The UI hides this distinction through the broker.
+
+### WSL2 RPC relay note
+
+When llama.cpp runs inside WSL2 but the RPC worker is on another machine, bind
+the Windows relay to an address reachable from WSL2, such as `0.0.0.0:51006`,
+and connect to the Windows host address from WSL2. A relay bound only to
+`127.0.0.1` is for Windows-local clients and is not reliably reachable from
+WSL2. Keep the relay on a trusted/private interface and never expose the raw
+RPC service directly.
+
+```powershell
+nvpair-compute-fabric.exe --daemon `
+  --cluster-dir C:\PAIR\cluster `
+  --rpc-relay-listen 0.0.0.0:51006 `
+  --rpc-relay-url https://192.168.50.223:14324/v1/fabric/rpc `
+  --rpc-relay-peer-id <paired-dgx-node-uuid>
+```
+
+```bash
+llama-server -m /path/model.gguf --rpc <windows-host-ip>:51006 \
+  --n-gpu-layers 99
+```
+
+The llama.cpp client and DGX `ggml-rpc-server` must be built from compatible
+revisions with `GGML_RPC=ON`. Verify that the client reports an `RPC0` device,
+the DGX log reports CUDA buffer allocation/graph execution, and the request
+returns HTTP 200. A heartbeat or open TCP port alone is not inference proof.
+
+## 2. Pair a device
+
+In the desktop UI, open **Settings > Cluster** on the Windows coordinator and
+choose the discovered device under **Available nodes to add**. If discovery is
+disabled or crosses a routed network, add the device as a manual node with its
+reachable address and port `14321`.
+
+The inviting device displays a six-digit PIN. On the invited device, accept the
+new invitation and enter that PIN. Confirm both devices show the other under
+**Connected nodes**. The PIN is out-of-band and is never written to logs.
+
+The protocol equivalent is:
+
+1. The coordinator calls `cluster:invite-node` with the worker address, port,
+   and optional node ID.
+2. The coordinator displays the returned `pin`.
+3. The worker receives `cluster:invite-received` and calls
+   `cluster:respond-to-invite` with `accept:true` and the human-entered PIN.
+4. Both sides wait for `state:"paired"`, then persist the reported cluster
+   identity. Wrong PIN, decline, timeout, or an already-clustered node is a
+   terminal result, not a successful pairing.
+
+Pair each worker to the same cluster. Never copy a node's private key or an
+existing cluster directory to another machine; identities must be generated on
+the machine that owns them.
+
+## 3. Install a portable worker
+
+The release/source tree provides `package-fabric-windows.ps1`,
+`package-fabric-linux.sh`, and `package-fabric-macos.sh`. Each archive contains
+the fabric executable, an installer/launcher, this documentation, and a SHA256
+manifest. Archives intentionally exclude certificates, private keys, cluster
+state, SSH keys, and models.
+
+### Windows
+
+Extract `fabric-windows-x64.zip`, set these values in a PowerShell session, and
+run `run-fabric-worker.ps1`:
+
+```powershell
+$env:PAIR_COORDINATOR_URL='https://coordinator.example:14324'
+$env:PAIR_WORKER_ID='win-worker-01'; $env:PAIR_NODE_ID='WIN-01'
+$env:PAIR_CLUSTER_DIR='C:\Users\you\AppData\Local\PAIR\cluster'
+.\run-fabric-worker.ps1
+```
+
+Use `install-fabric-worker-windows.ps1 -Task` to register a per-user logon
+task. It needs no administrator rights. For a Windows GPU, set
+`PAIR_RUNTIME=cuda` and use a CUDA-capable llama.cpp RPC build; otherwise use
+`cpu`. The launcher passes `--daemon`, so it stays alive without broker stdin.
+
+### Linux: DGX or mini-PC
+
+Extract `fabric-linux-x64.zip`, provision the paired cluster directory, then:
+
+```bash
+export PAIR_FABRIC_BINARY="$PWD/nvpair-compute-fabric"
+export PAIR_CLUSTER_DIR=/var/lib/nvpair/cluster
+export PAIR_COORDINATOR_URL=https://coordinator.example:14324
+export PAIR_WORKER_ID=dgx-01 PAIR_NODE_ID=DGX-01
+export PAIR_RUNTIME=cuda PAIR_BACKEND=cuda
+sudo -E ./install-fabric-worker.sh
+sudo systemctl enable --now nvpair-fabric-worker
+```
+
+Use `PAIR_RUNTIME=cpu` and `PAIR_BACKEND=cpu` on CPU-only mini-PCs. Set
+`PAIR_RUNTIME=cuda` only after `nvidia-smi` and a local CUDA llama.cpp build
+work. The service restarts after a crash and re-enters the fabric through a
+fresh authenticated heartbeat. If a CUDA llama.cpp build already exists, pass
+its `ggml-rpc-server` through `PAIR_RPC_SERVER_PATH`; the installer supervises
+that helper without changing the source project or its models.
+
+### Lab DGX preflight
+
+The lab inventory identifies the DGX Spark as `192.168.50.223` with SSH user
+`admin`. From the Windows coordinator, validate access before attempting PAIR
+installation:
+
+```powershell
+ssh admin@192.168.50.223 "hostname; nvidia-smi; docker info"
+Test-NetConnection 192.168.50.223 -Port 14321
+Test-NetConnection 192.168.50.223 -Port 14324
+```
+
+SSH must use the key authorized on the DGX. Do not reuse the AWS key unless it
+has explicitly been authorized there. After SSH works, copy/extract the Linux
+bundle, create the DGX's local cluster identity by pairing it from **Settings >
+Cluster**, and install it with `PAIR_RUNTIME=cuda` / `PAIR_BACKEND=cuda`. The
+DGX should then appear as `ready` in `/v1/fabric/status` and pass a small
+completion test before it is admitted to production jobs.
+
+In the current Windows lab topology, the desktop coordinator is reachable at
+`https://192.168.50.105:14324` and the paired DGX is
+`https://192.168.50.223:14324`. An authenticated status query from the DGX
+reported `spark-b57c` as `ready`, CUDA-backed, with approximately 83 GB of
+currently free host memory. The dashboard reads this coordinator state; it does
+not rely on a hand-maintained status file.
+
+### macOS
+
+Extract `fabric-macos-arm64.zip` or the matching architecture archive, set the
+same required `PAIR_*` values, and run `install-fabric-worker-macos.sh`. It
+installs a per-user launchd agent with `RunAtLoad` and `KeepAlive`. Use
+`PAIR_RUNTIME=metal` with a Metal-capable engine; capability detection alone
+does not build or install Metal llama.cpp.
+
+## 4. Verify a worker
+
+The coordinator status endpoint is:
+
+```text
+GET https://coordinator/v1/fabric/status
+```
+
+The worker must be `ready`, have a recent heartbeat, and show the expected
+runtime/backends. A ready heartbeat is not proof of inference. Send a small
+OpenAI-compatible completion through the configured llama-server and verify a
+generated response. Inspect service logs for `worker rejoined` after a restart;
+never treat a stale status file as health evidence.
+
+## 5. Failure and recovery
+
+Missed heartbeats stop new work, then quarantine the worker. The coordinator
+rebuilds a compatible group and resumes only from a valid checkpoint supported
+by the selected runtime adapter. When the node returns, it completes a new
+mTLS handshake and capability probe before rejoining the queue. A runtime that
+cannot restore its checkpoint reports failure rather than replaying side
+effects silently.
+
+## 6. Security and fleet rules
+
+Use a private network or a narrowly scoped firewall rule for `14321` and
+`14324`. Pair before admitting compute work. Do not put `.pem`, `.key`, cluster
+directories, PINs, model files, or SSH credentials into a bundle or repository.
+For AWS smoke tests, a reverse SSH tunnel is acceptable for private testing;
+production should use a controlled route and rotate access credentials normally.
+
+For 50 mini-PCs, automate only after one CPU node has passed pairing, status,
+completion, crash restart, and rejoin tests. Give every device a unique worker
+ID, node ID, cluster identity generated locally, and a measured role (`cpu`,
+`cuda`, or `metal`). Adding more machines increases aggregate throughput and
+capacity; it does not create a zero-latency shared memory pool.

@@ -224,6 +224,11 @@ If you are changing PAIR rather than only running it, the checks to run before
 opening a pull request are in
 [CONTRIBUTING.md](../CONTRIBUTING.md#development-setup).
 
+Distributed-fabric development currently uses the existing Electron desktop on
+Windows as the operator surface. WinUI 3 is not a prerequisite. The coordinator
+and worker services are native Go processes; runtime-specific native libraries
+are added only behind an adapter after profiling and ABI tests.
+
 ## Cleaning Up a Build from Source
 
 A source build has nothing to uninstall — deleting the checkout removes the

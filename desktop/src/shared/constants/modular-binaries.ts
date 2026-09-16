@@ -16,6 +16,7 @@ export type ModularProcessName =
     | 'cluster-manager'
     | 'errors'
     | 'job-scheduler'
+    | 'compute-fabric'
 
 export type ModularPackageArch = 'x64' | 'arm64'
 
@@ -70,6 +71,17 @@ export const MODULAR_RUNTIME_BINARIES: ModularRuntimeBinary[] = [
         // access to be reachable.
         processName: 'lmstudio-proxy',
         baseName: 'lmstudio-proxy',
+        args: [],
+        launchOwner: 'broker',
+        needsFirewallAccess: true,
+        optional: true
+    },
+    {
+        // Coordinator-side worker lifecycle and lease state machine. The
+        // network worker transport is authenticated and opt-in; the broker
+        // still owns this process so crashes cannot strand fabric state.
+        processName: 'compute-fabric',
+        baseName: 'nvpair-compute-fabric',
         args: [],
         launchOwner: 'broker',
         needsFirewallAccess: true,
