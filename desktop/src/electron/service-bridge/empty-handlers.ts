@@ -4,7 +4,7 @@
 import type { WsInvokeChannel, WsInvokeRequest, WsInvokeResponse } from '@/shared/types/ws-channels'
 import type { ClusterInitialSnapshot } from '@/shared/types/bootstrap'
 import type { ClusterNode, ClusterNodeIdentity, Invite } from '@/shared/types/cluster'
-import type { FabricStatus, FabricWorker, FabricJob, FabricExecution, FabricCapacity } from '@/shared/types/fabric'
+import type { FabricStatus, FabricWorker, FabricJob, FabricExecution, FabricCapacity, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingRequest, FabricTrainingNode } from '@/shared/types/fabric'
 import type { EngineType } from '@/shared/types/engines'
 import type { ServiceError } from '@/shared/types/errors'
 import {
@@ -109,6 +109,7 @@ function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
               return {
                   workerId: stringValue(obj?.workerId),
                   nodeId: stringValue(obj?.nodeId),
+                  endpoint: stringValue(obj?.endpoint),
                   state: fabricWorkerState(obj?.state),
                   runtime: stringValue(obj?.runtime),
                   backends: stringArray(obj?.backends),
@@ -129,6 +130,59 @@ function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
         ? root.executions.map(item => { const obj = objectValue(item); return { jobId: stringValue(obj?.jobId), pid: numberValue(obj?.pid), state: stringValue(obj?.state), rpcPeers: numberValue(obj?.rpcPeers), httpPort: numberValue(obj?.httpPort) } })
         : []
     return { workers, capacity, jobs, executions }
+}
+
+function parseFabricTrainingExecution(value: JsonValue | undefined): FabricTrainingExecution {
+    const obj = objectValue(value)
+    return { jobId: stringValue(obj?.jobId), nodeRank: numberValue(obj?.nodeRank), pid: numberValue(obj?.pid), state: stringValue(obj?.state) }
+}
+
+function parseFabricTrainingExecutions(value: JsonValue | undefined): FabricTrainingExecution[] {
+    return Array.isArray(value) ? value.map(item => parseFabricTrainingExecution(item)) : []
+}
+
+function parseFabricCheckpoint(value: JsonValue | undefined): FabricCheckpoint {
+    const obj = objectValue(value)
+    return { jobId: stringValue(obj?.jobId), groupId: stringValue(obj?.groupId), epoch: numberValue(obj?.epoch), stage: numberValue(obj?.stage), slotId: numberValue(obj?.slotId), filename: stringValue(obj?.filename) }
+}
+
+function parseFabricTrainingStatus(value: JsonValue | undefined): FabricTrainingGroupStatus {
+    const obj = objectValue(value)
+    return {
+        jobId: stringValue(obj?.jobId),
+        state: stringValue(obj?.state),
+        epoch: numberValue(obj?.epoch),
+        executions: parseFabricTrainingExecutions(obj?.executions),
+        checkpoint: parseFabricCheckpoint(obj?.checkpoint),
+        recoveryAttempts: numberValue(obj?.recoveryAttempts)
+    }
+}
+
+function fabricTrainingNodeJson(node: FabricTrainingNode): JsonObject {
+    return { workerId: node.workerId, address: node.address, backend: node.backend, ...(node.gpuCount === undefined ? {} : { gpuCount: node.gpuCount }) }
+}
+
+function fabricTrainingRequestJson(request: FabricTrainingRequest | undefined): JsonObject | undefined {
+    if (!request) return undefined
+    return {
+        jobId: request.jobId,
+        modelDigest: request.modelDigest,
+        trainerPath: request.trainerPath,
+        modelPath: request.modelPath,
+        datasetPath: request.datasetPath,
+        checkpointDirectory: request.checkpointDirectory,
+        ...(request.resumeCheckpoint === undefined ? {} : { resumeCheckpoint: request.resumeCheckpoint }),
+        rendezvousEndpoint: request.rendezvousEndpoint,
+        parallelism: request.parallelism,
+        processesPerNode: request.processesPerNode,
+        checkpointIntervalSteps: request.checkpointIntervalSteps,
+        nodes: request.nodes.map(node => fabricTrainingNodeJson(node))
+    }
+}
+
+function fabricCheckpointJson(checkpoint: FabricCheckpoint | undefined): JsonObject | undefined {
+    if (!checkpoint) return undefined
+    return { jobId: checkpoint.jobId, groupId: checkpoint.groupId, epoch: checkpoint.epoch, stage: checkpoint.stage, ...(checkpoint.slotId === undefined ? {} : { slotId: checkpoint.slotId }), filename: checkpoint.filename }
 }
 
 /** Map our `EngineType` onto the `nvpair-engine-manager` engine identifier. */
@@ -1005,6 +1059,14 @@ const EMPTY_SERVICE_BRIDGE_HANDLERS: BridgeHandlerMap = {
     'discovery:get-nodes': () => getModularBridgeState().getAvailableNodes(),
 
     'fabric:get-status': async () => parseFabricStatus(await callCluster('fabric:get-status')),
+    'fabric:training-start': async payload => parseFabricTrainingExecutions(await callCluster('fabric:training-start', fabricTrainingRequestJson(payload))),
+    'fabric:training-status': async payload => parseFabricTrainingStatus(await callCluster('fabric:training-status', payload)),
+    'fabric:training-checkpoint': async payload => parseFabricCheckpoint(await callCluster('fabric:training-checkpoint', fabricCheckpointJson(payload))),
+    'fabric:training-recover': async payload => parseFabricTrainingExecutions(await callCluster('fabric:training-recover', payload ? { jobId: payload.jobId, nodes: payload.nodes.map(node => fabricTrainingNodeJson(node)), rendezvousEndpoint: payload.rendezvousEndpoint } : undefined)),
+    'fabric:training-stop': async payload => {
+        const result = objectValue(await callCluster('fabric:training-stop', payload))
+        return { stopped: booleanValue(result?.stopped) }
+    },
 
     'cluster:get-initial': () => handleClusterGetInitial(),
     'cluster:invite-node': payload => handleClusterInviteNode(payload),

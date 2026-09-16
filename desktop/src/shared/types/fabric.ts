@@ -6,6 +6,7 @@ export type FabricWorkerState = 'ready' | 'suspect' | 'quarantined' | 'draining'
 export interface FabricWorker {
     workerId: string
     nodeId: string
+    endpoint: string
     state: FabricWorkerState
     runtime: string
     backends: string[]
@@ -47,4 +48,53 @@ export interface FabricStatus {
     capacity: FabricCapacity
     jobs: FabricJob[]
     executions: FabricExecution[]
+}
+
+export type FabricTrainingParallelism = 'data' | 'fsdp'
+
+export interface FabricTrainingNode {
+    workerId: string
+    address: string
+    backend: 'cpu' | 'cuda' | 'metal'
+    gpuCount?: number
+}
+
+export interface FabricTrainingRequest {
+    jobId: string
+    modelDigest: string
+    trainerPath: string
+    modelPath: string
+    datasetPath: string
+    checkpointDirectory: string
+    resumeCheckpoint?: string
+    rendezvousEndpoint: string
+    parallelism: FabricTrainingParallelism
+    processesPerNode: number
+    checkpointIntervalSteps: number
+    nodes: FabricTrainingNode[]
+}
+
+export interface FabricTrainingExecution {
+    jobId: string
+    nodeRank: number
+    pid: number
+    state: string
+}
+
+export interface FabricCheckpoint {
+    jobId: string
+    groupId: string
+    epoch: number
+    stage: number
+    slotId?: number
+    filename: string
+}
+
+export interface FabricTrainingGroupStatus {
+    jobId: string
+    state: string
+    epoch: number
+    executions: FabricTrainingExecution[]
+    checkpoint: FabricCheckpoint
+    recoveryAttempts: number
 }
