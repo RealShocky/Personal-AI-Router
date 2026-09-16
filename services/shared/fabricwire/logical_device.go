@@ -57,6 +57,23 @@ type LogicalDeviceRequest struct {
 	DeadlineUnixMS  int64  `json:"deadlineUnixMs,omitempty"`
 }
 
+type PageSpec struct {
+	PageID string `json:"pageId"`
+	Bytes  uint64 `json:"bytes"`
+	DType  string `json:"dtype,omitempty"`
+	Layout string `json:"layout,omitempty"`
+}
+
+type LogicalDevicePlanRequest struct {
+	LogicalDeviceRequest
+	Runtime       string        `json:"runtime"`
+	ModelDigest   string        `json:"modelDigest"`
+	ShardStrategy ShardStrategy `json:"shardStrategy"`
+	Providers     []Provider    `json:"providers,omitempty"`
+	WorkerGoal    uint32        `json:"workerGoal"`
+	Pages         []PageSpec    `json:"pages"`
+}
+
 func (r LogicalDeviceRequest) ValidateForEpoch(current uint64) error {
 	if r.ProtocolVersion != LogicalDeviceProtocolVersion {
 		return fmt.Errorf("unsupported logical device protocol version %d", r.ProtocolVersion)
