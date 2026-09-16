@@ -4,6 +4,7 @@
 package main
 
 import (
+	"net"
 	"os"
 	"runtime"
 	"strings"
@@ -30,4 +31,21 @@ func TestChildEnvironmentAddsExecutableLibraryDirectoryOnUnix(t *testing.T) {
 		}
 	}
 	t.Fatalf("%s missing from child environment (PATH=%q)", variable, os.Getenv(variable))
+}
+
+func TestRPCTargetAvailableReflectsReachability(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for RPC probe: %v", err)
+	}
+	address := listener.Addr().String()
+	if !rpcTargetAvailable(address) {
+		t.Fatal("reachable RPC target was reported unavailable")
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close RPC probe listener: %v", err)
+	}
+	if rpcTargetAvailable(address) {
+		t.Fatal("closed RPC target was reported available")
+	}
 }

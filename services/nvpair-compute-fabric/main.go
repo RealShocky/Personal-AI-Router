@@ -133,7 +133,7 @@ func main() {
 				modelDigest = digest
 			}
 		}
-		go runWorkerHeartbeats(ctx, *coordinatorURL, *clusterDir, *workerID, *nodeID, *advertiseURL, *runtimeName, *backend, modelDigest, *llamaServerPath != "", *timeout)
+		go runWorkerHeartbeats(ctx, *coordinatorURL, *clusterDir, *workerID, *nodeID, *advertiseURL, *runtimeName, *backend, modelDigest, *llamaServerPath != "", *rpcTarget, *timeout)
 	}
 
 	go func() {
@@ -170,7 +170,7 @@ func main() {
 	}
 }
 
-func runWorkerHeartbeats(ctx context.Context, coordinatorURL, clusterDir, workerID, nodeID, endpoint, runtimeName, backend, modelDigest string, checkpointSupport bool, timeout time.Duration) {
+func runWorkerHeartbeats(ctx context.Context, coordinatorURL, clusterDir, workerID, nodeID, endpoint, runtimeName, backend, modelDigest string, checkpointSupport bool, rpcTarget string, timeout time.Duration) {
 	mesh := clustertrust.Open(clusterDir)
 	epoch := uint64(time.Now().UnixNano())
 	backends := make([]string, 0, 2)
@@ -207,6 +207,7 @@ func runWorkerHeartbeats(ctx context.Context, coordinatorURL, clusterDir, worker
 				Backends:           backends,
 				ModelDigests:       modelDigests(modelDigest),
 				CheckpointSupport:  checkpointSupport,
+				RPCSupport:         rpcTargetAvailable(rpcTarget),
 				ProbeLatencyMillis: probeLatency,
 				MemoryFree:         systemMemoryFree(),
 				GPUVramTotal:       gpuMemory.Total,
@@ -239,6 +240,18 @@ func runWorkerHeartbeats(ctx context.Context, coordinatorURL, clusterDir, worker
 		case <-timer.C:
 		}
 	}
+}
+
+func rpcTargetAvailable(target string) bool {
+	if target == "" {
+		return false
+	}
+	connection, err := net.DialTimeout("tcp", target, 500*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = connection.Close()
+	return true
 }
 
 func modelDigests(digest string) []string {

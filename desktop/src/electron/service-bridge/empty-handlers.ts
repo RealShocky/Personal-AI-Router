@@ -139,6 +139,7 @@ export function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
                   backends: stringArray(heartbeat?.backends),
                   modelDigests: stringArray(heartbeat?.modelDigests),
                   checkpointSupport: booleanValue(heartbeat?.checkpointSupport),
+                  rpcSupport: booleanValue(heartbeat?.rpcSupport),
                   probeLatencyMillis: numberValue(heartbeat?.probeLatencyMillis),
                   memoryFree: numberValue(heartbeat?.memoryFreeBytes ?? heartbeat?.memoryFree),
                   gpuVramTotal: numberValue(heartbeat?.gpuVramTotalBytes),

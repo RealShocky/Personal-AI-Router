@@ -12,6 +12,7 @@ export interface FabricWorker {
     backends: string[]
     modelDigests: string[]
     checkpointSupport: boolean
+    rpcSupport: boolean
     probeLatencyMillis: number
     memoryFree: number
     gpuVramTotal: number

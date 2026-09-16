@@ -48,7 +48,7 @@ export default function FabricInferenceCard() {
         }
     }, [jobId])
 
-    const readyCuda = fabric.workers.filter(worker => worker.state === 'ready' && worker.backends.includes('cuda')).length
+    const readyRPC = fabric.workers.filter(worker => worker.state === 'ready' && worker.rpcSupport && (worker.backends.includes('cpu') || worker.backends.includes('cuda'))).length
     const run = async (operation: () => Promise<void>) => {
         setBusy(true)
         setError('')
@@ -74,7 +74,7 @@ export default function FabricInferenceCard() {
                 ...(slotSavePath.trim() === '' ? {} : { slotSavePath: slotSavePath.trim() }),
                 ...(checkpointFile.trim() === '' ? {} : { checkpointFile: checkpointFile.trim() }),
                 ...(Number(checkpointInterval) > 0 ? { checkpointIntervalSeconds: Number(checkpointInterval) } : {}),
-                group: { groupId: jobId.trim(), runtime: 'llama.cpp', backends: ['cuda'], workerGoal: goal, allowMixed: false }
+                group: { groupId: jobId.trim(), runtime: 'llama.cpp', backends: ['cpu', 'cuda'], workerGoal: goal, allowMixed: true }
             }
             setExecution(await window.pairApi.fabric.startInference(request))
         })
@@ -85,9 +85,9 @@ export default function FabricInferenceCard() {
             const request = {
                 groupId: jobId.trim(),
                 runtime: 'llama.cpp',
-                backends: ['cuda'],
+                backends: ['cpu', 'cuda'],
                 workerGoal: goal,
-                allowMixed: false,
+                allowMixed: true,
             }
             setPlan(await window.pairApi.fabric.planGroup(request))
         })
@@ -102,7 +102,7 @@ export default function FabricInferenceCard() {
             <Stack gap="2">
                 <Flex align="center" justify="between" gap="2">
                     <Text kind="body/semibold/sm">Distributed inference</Text>
-                    <Text kind="body/regular/sm" className="text-subtle-color">{readyCuda} CUDA workers ready</Text>
+                    <Text kind="body/regular/sm" className="text-subtle-color">{readyRPC} CPU/CUDA RPC workers ready</Text>
                 </Flex>
                 <Text kind="body/regular/sm" className="text-subtle-color">Launches one llama.cpp service with authenticated RPC placement across the selected workers.</Text>
                 <Flex gap="2" wrap="wrap">
@@ -126,7 +126,7 @@ export default function FabricInferenceCard() {
                 </Flex>
                 <Flex gap="2">
                     <Button kind="secondary" size="small" onClick={dryRun} disabled={busy || Number(workerGoal) <= 0}>Preview admission</Button>
-                    <Button kind="primary" color="brand" size="small" onClick={start} disabled={busy || readyCuda < Number(workerGoal)}>Start distributed inference</Button>
+                    <Button kind="primary" color="brand" size="small" onClick={start} disabled={busy || readyRPC < Number(workerGoal)}>Start distributed inference</Button>
                     <Button kind="secondary" size="small" onClick={stop} disabled={busy || execution?.state !== 'running'}>Stop inference</Button>
                 </Flex>
                 {execution && <Text kind="body/regular/sm" className="text-subtle-color">{execution.jobId}: {execution.state} · {execution.rpcPeers} remote RPC peer{execution.rpcPeers === 1 ? '' : 's'} · port {execution.httpPort}</Text>}

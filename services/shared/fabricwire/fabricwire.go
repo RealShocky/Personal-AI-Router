@@ -57,6 +57,7 @@ type Heartbeat struct {
 	QueueDepth         uint32      `json:"queueDepth"`
 	ModelDigests       []string    `json:"modelDigests,omitempty"`
 	CheckpointSupport  bool        `json:"checkpointSupport,omitempty"`
+	RPCSupport         bool        `json:"rpcSupport,omitempty"`
 	ProbeLatencyMillis uint64      `json:"probeLatencyMillis,omitempty"`
 }
 

@@ -28,8 +28,11 @@ machine has enough memory and a compatible backend.
 The Windows Electron dashboard is the operator console. Open the normal PAIR
 window and go to the Overview/node list. The **Distributed inference fabric**
 card refreshes every five seconds and lists each worker's state, runtime,
-backends, free host memory, heartbeat probe latency, checkpoint support, jobs,
-GPU count, free/total VRAM when NVIDIA telemetry is available, and executions.
+backends, free host memory, heartbeat probe latency, checkpoint support, RPC
+support, jobs, GPU count, free/total VRAM when NVIDIA telemetry is available,
+and executions. RPC support is a live local-target probe and the gate for
+llama.cpp distributed placement; GPU/CPU telemetry alone does not make a
+worker eligible for a pooled runtime.
 The regular node cards remain the engine/model view; the fabric
 card is the compute-plane view. A worker showing `ready` means authenticated
 and admitted for scheduling, not that a model is currently loaded.
