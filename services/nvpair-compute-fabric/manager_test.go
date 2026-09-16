@@ -92,6 +92,17 @@ func TestManagerPlansOnlyCompatibleReadyWorkers(t *testing.T) {
 	}
 }
 
+func TestManagerMatchesLlamaEngineToWorkerBackendRuntime(t *testing.T) {
+	m := NewManager(time.Second)
+	now := time.Unix(100, 0)
+	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "cuda-1", NodeID: "n1", Endpoint: "https://cuda-1/v1/fabric/rpc", State: fabricwire.WorkerReady, Epoch: 1, Runtime: "cuda", Backends: []string{"cuda"}}, now)
+
+	plan, err := m.PlanGroup(fabricwire.GroupRequest{GroupID: "llama-cuda", Runtime: "llama.cpp", Backends: []string{"cuda"}, WorkerGoal: 1})
+	if err != nil || len(plan.Workers) != 1 || plan.Workers[0] != "cuda-1" {
+		t.Fatalf("plan = %+v, err = %v; llama.cpp should match a CUDA worker runtime", plan, err)
+	}
+}
+
 func TestManagerAdmissionFiltersModelCheckpointAndMeasuredLatency(t *testing.T) {
 	m := NewManager(time.Second)
 	now := time.Unix(100, 0)

@@ -153,7 +153,7 @@ func (m *Manager) PlanGroup(request fabricwire.GroupRequest) (fabricwire.GroupPl
 		Endpoints: make(map[string]string),
 	}
 	for id, worker := range m.workers {
-		if worker.State != fabricwire.WorkerReady || worker.Heartbeat.Runtime != request.Runtime {
+		if worker.State != fabricwire.WorkerReady || !runtimeMatches(request.Runtime, worker.Heartbeat) {
 			continue
 		}
 		if !request.AllowMixed && len(request.Backends) > 0 && len(plan.Workers) > 0 && (len(worker.Heartbeat.Backends) == 0 || worker.Heartbeat.Backends[0] != request.Backends[0]) {
@@ -226,6 +226,26 @@ func (m *Manager) BuildExecutionPlan(request fabricwire.GroupRequest, group fabr
 		return fabricwire.ExecutionPlan{}, err
 	}
 	return plan, nil
+}
+
+// runtimeMatches keeps the engine runtime (for example, llama.cpp) separate
+// from the worker execution runtime (for example, cuda). Older workers may
+// report llama.cpp directly, while capability-aware workers report the
+// backend they can execute. The backend filters below still decide whether a
+// particular CPU, CUDA, or Metal worker is eligible.
+func runtimeMatches(requestRuntime string, heartbeat fabricwire.Heartbeat) bool {
+	if heartbeat.Runtime == requestRuntime {
+		return true
+	}
+	if requestRuntime != "llama.cpp" {
+		return false
+	}
+	for _, backend := range heartbeat.Backends {
+		if backend == "cpu" || backend == "cuda" || backend == "metal" {
+			return true
+		}
+	}
+	return false
 }
 
 func hasModelDigest(digests []string, want string) bool {

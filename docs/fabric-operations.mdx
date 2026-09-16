@@ -103,6 +103,11 @@ The model path is local to the coordinator because llama.cpp streams the
 selected tensors to RPC workers; workers do not need a second copy for this
 inference path. Training has separate per-node path requirements.
 
+The inference group is requested as `llama.cpp` and filtered by backend (such
+as `cuda`). A worker may therefore advertise `runtime: cuda` while still being
+eligible for a llama.cpp group; `runtime` describes the worker execution
+capability and `backends` describes the concrete acceleration options.
+
 ### Windows coordinator with a WSL llama-server
 
 If the CUDA-enabled `llama-server` exists only in WSL, enable **Run through
