@@ -96,6 +96,7 @@ export interface WsInvokeChannelMap {
     'fabric:logical-device-plan': { request: FabricLogicalDevicePlanRequest; response: FabricLogicalDevicePlan }
     'fabric:logical-device-status': { request: { planId: string }; response: FabricLogicalDeviceStatus }
     'fabric:logical-device-transfer': { request: FabricTransferRequest; response: FabricTransferStatus }
+    'fabric:logical-device-recover': { request: { planId: string; workers: string[] }; response: FabricLogicalDevicePlan }
     'fabric:plan': { request: FabricGroupRequest; response: FabricGroupPlan }
     'fabric:inference-start': { request: FabricInferenceRequest; response: FabricExecution }
     'fabric:inference-status': { request: { jobId: string }; response: FabricExecution }

@@ -1114,6 +1114,25 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		_ = codec.Respond(msg.ID, transfer)
+	case "fabric:logical-device-recover":
+		if logicalDevice == nil {
+			_ = codec.RespondError(msg.ID, -32001, "logical device manager unavailable")
+			return
+		}
+		var params struct {
+			PlanID  string   `json:"planId"`
+			Workers []string `json:"workers"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil || params.PlanID == "" {
+			_ = codec.RespondError(msg.ID, -32602, "invalid logical device recovery request")
+			return
+		}
+		plan, err := logicalDevice.Recover(params.PlanID, params.Workers)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32004, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, plan)
 	case "fabric:build-training-command":
 		var params struct {
 			Request  TrainingRequest `json:"request"`

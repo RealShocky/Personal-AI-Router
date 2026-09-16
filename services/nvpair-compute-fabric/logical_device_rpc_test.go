@@ -137,3 +137,49 @@ func TestLogicalDeviceTransferRPCReturnsQueuedTransfer(t *testing.T) {
 		t.Fatalf("RPC transfer = %#v", transfer)
 	}
 }
+
+func TestLogicalDeviceRecoveryRPCReturnsNewEpoch(t *testing.T) {
+	now := time.Now()
+	workers := NewManager(time.Second)
+	workers.AcceptHeartbeat(fabricwire.Heartbeat{
+		WorkerID: "cpu-a", NodeID: "host-a", Epoch: 1, State: fabricwire.WorkerReady,
+		Runtime: "pair", Backends: []string{"cpu"}, MemoryFree: 8 << 30,
+	}, now.Add(-3*time.Second))
+	workers.AcceptHeartbeat(fabricwire.Heartbeat{
+		WorkerID: "cpu-b", NodeID: "host-b", Epoch: 1, State: fabricwire.WorkerReady,
+		Runtime: "pair", Backends: []string{"cpu"}, MemoryFree: 8 << 30,
+	}, now)
+	logical := NewLogicalDeviceManager(workers)
+	plan, err := logical.Plan(fabricwire.LogicalDevicePlanRequest{
+		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "rpc-recovery-plan"},
+		Runtime:              "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
+		Providers: []fabricwire.Provider{fabricwire.ProviderCPU}, WorkerGoal: 1,
+		Pages: []fabricwire.PageSpec{{PageID: "page-1", Bytes: 1024}},
+	})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	workers.Reconcile(now)
+	logical.Reconcile(now)
+	params, err := json.Marshal(map[string]any{"planId": plan.PlanID, "workers": []string{"cpu-b"}})
+	if err != nil {
+		t.Fatalf("marshal recovery request: %v", err)
+	}
+	id := json.RawMessage(`4`)
+	var output bytes.Buffer
+	handleMessage(NewCodec(&output), workers, nil, nil, nil, logical, context.CancelFunc(func() {}), &Message{JSONRPC: "2.0", ID: &id, Method: "fabric:logical-device-recover", Params: params})
+	var response Message
+	if err := json.Unmarshal(output.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Error != nil {
+		t.Fatalf("RPC returned error: %#v", response.Error)
+	}
+	var recovered fabricwire.LogicalDevicePlan
+	if err := json.Unmarshal(response.Result, &recovered); err != nil {
+		t.Fatalf("decode recovered plan: %v", err)
+	}
+	if recovered.Epoch <= plan.Epoch || recovered.Workers[0].WorkerID != "cpu-b" {
+		t.Fatalf("RPC recovered plan = %#v", recovered)
+	}
+}

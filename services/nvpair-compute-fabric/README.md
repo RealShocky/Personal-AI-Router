@@ -194,6 +194,12 @@ authoritative plan epoch, page owners, and transfer IDs. A
 changes only after the provider reports a matching digest through the service
 state path.
 
+`fabric:logical-device-recover` accepts a degraded plan ID and an exact
+replacement worker list. It creates a newer epoch and moves page ownership to
+the replacement set only after those workers are ready. Provider execution and
+checkpoint verification must still complete before the plan is considered
+running.
+
 ## Test
 
 ```bash

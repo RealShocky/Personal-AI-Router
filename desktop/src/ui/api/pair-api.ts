@@ -87,6 +87,7 @@ export interface IFabricApi {
     planLogicalDevice(request: FabricLogicalDevicePlanRequest): Promise<FabricLogicalDevicePlan>
     getLogicalDeviceStatus(planId: string): Promise<FabricLogicalDeviceStatus>
     transferLogicalDevicePage(request: FabricTransferRequest): Promise<FabricTransferStatus>
+    recoverLogicalDevice(planId: string, workers: string[]): Promise<FabricLogicalDevicePlan>
     /** Ask the coordinator to admit a group without launching a job. */
     planGroup(request: FabricGroupRequest): Promise<FabricGroupPlan>
     startInference(request: FabricInferenceRequest): Promise<FabricExecution>
@@ -196,6 +197,7 @@ export function createPairApi(transport: ServiceTransport): IPairApi {
             planLogicalDevice: request => transport.invoke('fabric:logical-device-plan', request),
             getLogicalDeviceStatus: planId => transport.invoke('fabric:logical-device-status', { planId }),
             transferLogicalDevicePage: request => transport.invoke('fabric:logical-device-transfer', request),
+            recoverLogicalDevice: (planId, workers) => transport.invoke('fabric:logical-device-recover', { planId, workers }),
             planGroup: request => transport.invoke('fabric:plan', request),
             startInference: request => transport.invoke('fabric:inference-start', request),
             getInferenceStatus: jobId => transport.invoke('fabric:inference-status', { jobId }),

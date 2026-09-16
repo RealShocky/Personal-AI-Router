@@ -102,6 +102,58 @@ func (m *LogicalDeviceManager) Reconcile(_ ...time.Time) {
 	}
 }
 
+func (m *LogicalDeviceManager) Recover(planID string, replacementWorkerIDs []string) (fabricwire.LogicalDevicePlan, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	plan, ok := m.plans[planID]
+	if !ok {
+		return fabricwire.LogicalDevicePlan{}, fmt.Errorf("logical device plan %q not found", planID)
+	}
+	if m.states[planID] != fabricwire.LogicalDeviceDegraded {
+		return fabricwire.LogicalDevicePlan{}, fmt.Errorf("logical device plan %q is not degraded", planID)
+	}
+	if len(replacementWorkerIDs) != len(plan.Workers) {
+		return fabricwire.LogicalDevicePlan{}, fmt.Errorf("recovery requires %d replacement workers", len(plan.Workers))
+	}
+	seen := make(map[string]bool, len(replacementWorkerIDs))
+	replacements := make([]WorkerRecord, 0, len(replacementWorkerIDs))
+	for _, workerID := range replacementWorkerIDs {
+		if seen[workerID] {
+			return fabricwire.LogicalDevicePlan{}, fmt.Errorf("recovery repeats worker %q", workerID)
+		}
+		seen[workerID] = true
+		worker, ready := m.workers.Worker(workerID)
+		if !ready || worker.State != fabricwire.WorkerReady {
+			return fabricwire.LogicalDevicePlan{}, fmt.Errorf("replacement worker %q is not ready", workerID)
+		}
+		replacements = append(replacements, worker)
+	}
+	epoch := uint64(time.Now().UnixNano())
+	if epoch <= plan.Epoch {
+		epoch = plan.Epoch + 1
+	}
+	plan.Epoch = epoch
+	plan.Workers = make([]fabricwire.WorkerAssignment, 0, len(replacements))
+	for index, worker := range replacements {
+		plan.Workers = append(plan.Workers, fabricwire.WorkerAssignment{
+			WorkerID: worker.Heartbeat.WorkerID, PeerID: workerPeerID(worker.Heartbeat), Endpoint: worker.Heartbeat.Endpoint,
+			ShardIndex: uint32(index), MemoryBudgetBytes: worker.Heartbeat.MemoryFree, GPUVramBudgetBytes: worker.Heartbeat.GPUVramFree,
+		})
+	}
+	for index, page := range plan.Pages {
+		page.WorkerID = replacements[index%len(replacements)].Heartbeat.WorkerID
+		page.Epoch = epoch
+		plan.Pages[index] = page
+	}
+	if err := plan.Validate(); err != nil {
+		return fabricwire.LogicalDevicePlan{}, err
+	}
+	m.plans[planID] = plan
+	m.requests[planID] = plan
+	m.states[planID] = fabricwire.LogicalDeviceRecovering
+	return plan, nil
+}
+
 func (m *LogicalDeviceManager) Transfer(request fabricwire.TransferRequest) (fabricwire.TransferStatus, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

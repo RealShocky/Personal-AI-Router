@@ -1302,6 +1302,10 @@ const EMPTY_SERVICE_BRIDGE_HANDLERS: BridgeHandlerMap = {
         if (!payload) throw new Error('logical device transfer request is required')
         return parseFabricTransferStatus(await callCluster('fabric:logical-device-transfer', fabricLogicalDeviceTransferJson(payload)))
     },
+    'fabric:logical-device-recover': async payload => {
+        if (!payload) throw new Error('logical device recovery request is required')
+        return parseFabricLogicalDevicePlan(await callCluster('fabric:logical-device-recover', { planId: payload.planId, workers: payload.workers }))
+    },
     'fabric:plan': async payload => {
         if (!payload) throw new Error('fabric group request is required')
         return parseFabricGroupPlan(await callCluster('fabric:plan-group', fabricGroupRequestJson(payload)))
