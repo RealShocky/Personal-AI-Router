@@ -24,6 +24,12 @@ The coordinator does not turn these devices into one operating-system GPU. A
 distributed runtime must explicitly place model layers or tensor work and send
 activations between workers.
 
+The coordinator can convert an admitted group into a versioned execution plan
+with `fabric:build-execution-plan`. The plan records the model digest, runtime,
+replicated/tensor/pipeline shard strategy, authenticated transport, worker shard
+assignments, per-worker host/GPU memory budgets, checkpoint interval, and bounded
+failover policy. Aggregate dashboard capacity alone never authorizes a job.
+
 ## Worker states
 
 Workers move through `discovered`, `authenticated`, `probing`, `ready`,

@@ -125,3 +125,25 @@ func TestManagerAdmissionFiltersGPUVRAMCapacity(t *testing.T) {
 		t.Fatalf("VRAM-aware plan = %+v, err = %v", plan, err)
 	}
 }
+
+func TestManagerBuildsVersionedExecutionPlanFromLiveWorkers(t *testing.T) {
+	m := NewManager(time.Second)
+	now := time.Unix(100, 0)
+	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "cuda-1", NodeID: "n1", State: fabricwire.WorkerReady, Epoch: 1, Runtime: "llama.cpp", Backends: []string{"cuda"}, ModelDigests: []string{"sha256:model"}, CheckpointSupport: true, MemoryFree: 12 << 30, GPUVramFree: 8 << 30}, now)
+	m.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "cuda-2", NodeID: "n2", State: fabricwire.WorkerReady, Epoch: 1, Runtime: "llama.cpp", Backends: []string{"cuda"}, ModelDigests: []string{"sha256:model"}, CheckpointSupport: true, MemoryFree: 16 << 30, GPUVramFree: 10 << 30}, now)
+	request := fabricwire.GroupRequest{GroupID: "g-plan", Runtime: "llama.cpp", Backends: []string{"cuda"}, WorkerGoal: 2, ModelDigest: "sha256:model", RequireCheckpoint: true}
+	group, err := m.PlanGroup(request)
+	if err != nil {
+		t.Fatalf("group plan: %v", err)
+	}
+	plan, err := m.BuildExecutionPlan(request, group, fabricwire.ShardTensor, fabricwire.TransportMTLSRPC)
+	if err != nil {
+		t.Fatalf("execution plan: %v", err)
+	}
+	if plan.Version != 1 || plan.ModelDigest != request.ModelDigest || len(plan.Workers) != 2 {
+		t.Fatalf("execution plan = %+v", plan)
+	}
+	if plan.Workers[0].MemoryBudgetBytes == 0 || plan.Workers[0].GPUVramBudgetBytes == 0 {
+		t.Fatalf("execution plan omitted live memory budgets: %+v", plan.Workers[0])
+	}
+}

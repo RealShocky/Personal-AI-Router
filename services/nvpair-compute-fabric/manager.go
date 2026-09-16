@@ -191,6 +191,41 @@ func (m *Manager) PlanGroup(request fabricwire.GroupRequest) (fabricwire.GroupPl
 	return fabricwire.GroupPlan{}, fmt.Errorf("only %d eligible workers available, need %d", len(plan.Workers), request.WorkerGoal)
 }
 
+func (m *Manager) BuildExecutionPlan(request fabricwire.GroupRequest, group fabricwire.GroupPlan, strategy fabricwire.ShardStrategy, transport fabricwire.Transport) (fabricwire.ExecutionPlan, error) {
+	plan := fabricwire.ExecutionPlan{
+		Version:       1,
+		PlanID:        group.GroupID,
+		Runtime:       group.Runtime,
+		ModelDigest:   request.ModelDigest,
+		ShardStrategy: strategy,
+		Transport:     transport,
+		Checkpoint: fabricwire.CheckpointPolicy{
+			Enabled:       request.RequireCheckpoint,
+			IntervalSteps: 1,
+		},
+		Failover: fabricwire.FailoverPolicy{Enabled: true, MaxAttempts: 3},
+		Workers:  make([]fabricwire.WorkerAssignment, 0, len(group.Workers)),
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for index, workerID := range group.Workers {
+		worker, ok := m.workers[workerID]
+		if !ok || worker.State != fabricwire.WorkerReady {
+			return fabricwire.ExecutionPlan{}, fmt.Errorf("worker %q is not ready for execution plan", workerID)
+		}
+		plan.Workers = append(plan.Workers, fabricwire.WorkerAssignment{
+			WorkerID:           workerID,
+			ShardIndex:         uint32(index),
+			MemoryBudgetBytes:  worker.Heartbeat.MemoryFree,
+			GPUVramBudgetBytes: worker.Heartbeat.GPUVramFree,
+		})
+	}
+	if err := plan.Validate(); err != nil {
+		return fabricwire.ExecutionPlan{}, err
+	}
+	return plan, nil
+}
+
 func hasModelDigest(digests []string, want string) bool {
 	for _, digest := range digests {
 		if digest == want {

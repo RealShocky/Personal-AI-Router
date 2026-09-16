@@ -66,3 +66,25 @@ func TestCheckpointRejectsStaleEpoch(t *testing.T) {
 		t.Fatal("checkpoint rejected its own epoch")
 	}
 }
+
+func TestExecutionPlanRequiresRuntimeModelAndAssignments(t *testing.T) {
+	plan := ExecutionPlan{
+		Version:       1,
+		PlanID:        "plan-a",
+		Runtime:       "llama.cpp",
+		ModelDigest:   "sha256:model",
+		ShardStrategy: ShardTensor,
+		Transport:     TransportMTLSRPC,
+		Workers:       []WorkerAssignment{{WorkerID: "worker-a", MemoryBudgetBytes: 8 << 30}},
+		Checkpoint:    CheckpointPolicy{Enabled: true, IntervalSteps: 10},
+		Failover:      FailoverPolicy{Enabled: true, MaxAttempts: 3},
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("valid execution plan rejected: %v", err)
+	}
+
+	plan.ModelDigest = ""
+	if err := plan.Validate(); err == nil {
+		t.Fatal("execution plan without model identity was accepted")
+	}
+}

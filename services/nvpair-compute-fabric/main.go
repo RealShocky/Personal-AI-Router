@@ -610,6 +610,23 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		_ = codec.Respond(msg.ID, plan)
+	case "fabric:build-execution-plan":
+		var params struct {
+			Request   fabricwire.GroupRequest  `json:"request"`
+			Group     fabricwire.GroupPlan     `json:"group"`
+			Strategy  fabricwire.ShardStrategy `json:"shardStrategy"`
+			Transport fabricwire.Transport     `json:"transport"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid execution plan request")
+			return
+		}
+		plan, err := mgr.BuildExecutionPlan(params.Request, params.Group, params.Strategy, params.Transport)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32001, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, plan)
 	case "fabric:job-start":
 		var request StartRequest
 		if err := json.Unmarshal(msg.Params, &request); err != nil {
