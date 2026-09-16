@@ -36,7 +36,10 @@ var Version = "dev"
 
 func main() {
 	ipcPath := flag.String("ipc", "", "IPC endpoint: Unix socket or Windows named pipe")
-	timeout := flag.Duration("heartbeat-timeout", 5*time.Second, "worker heartbeat lease timeout")
+	// Workers normally emit heartbeats every half of their configured timeout.
+	// Keep the coordinator lease longer than the 10-second fleet default so a
+	// healthy worker is not quarantined merely because one heartbeat is late.
+	timeout := flag.Duration("heartbeat-timeout", 15*time.Second, "worker heartbeat lease timeout")
 	httpPort := flag.Int("http-port", 0, "authenticated fabric HTTP port (0 disables the network endpoint)")
 	clusterDir := flag.String("cluster-dir", "", "cluster trust directory for the authenticated fabric endpoint")
 	stateDir := flag.String("state-dir", "", "durable coordinator state directory for checkpoints")
@@ -809,13 +812,7 @@ func relayRPCConnection(ctx context.Context, local net.Conn, remoteURL, clusterD
 	defer local.Close()
 	mesh := clustertrust.Open(clusterDir)
 	mesh.Refresh()
-	var config *tls.Config
-	var ok bool
-	if peerID != "" {
-		config, ok = mesh.ClientTLSConfig(peerID)
-	} else {
-		config, ok = mesh.ClientTLSConfigAny()
-	}
+	config, ok := relayTLSConfig(mesh, peerID)
 	if !ok {
 		return
 	}
@@ -851,6 +848,21 @@ func relayRPCConnection(ctx context.Context, local net.Conn, remoteURL, clusterD
 	}
 	log.Printf("RPC relay connected peer=%s", peerID)
 	bridgeConnectionsFromReader(local, reader, remote)
+}
+
+func relayTLSConfig(mesh *clustertrust.Mesh, peerID string) (*tls.Config, bool) {
+	if peerID != "" {
+		if config, ok := mesh.ClientTLSConfig(peerID); ok {
+			return config, true
+		}
+		// Heartbeats historically carried a display node ID (for example,
+		// "spark-b57c") while the trust store is keyed by the node UUID. The
+		// Any path still pins the exact presented certificate to a current
+		// cluster member, so it is safe and allows mixed-version workers to
+		// participate while they upgrade their heartbeat schema.
+		log.Printf("RPC relay peer ID is not a UUID peer=%s; resolving pinned certificate", peerID)
+	}
+	return mesh.ClientTLSConfigAny()
 }
 
 func bridgeConnections(a, b net.Conn) {

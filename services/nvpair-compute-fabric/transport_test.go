@@ -146,6 +146,31 @@ func TestFabricRPCTunnelAuthenticatesAndBridges(t *testing.T) {
 	_ = serverKey
 }
 
+func TestRelayTLSConfigFallsBackFromDisplayNodeIDToPinnedCertificate(t *testing.T) {
+	serverDir := t.TempDir()
+	clientDir := t.TempDir()
+	serverCert, _ := writeIdentity(t, serverDir, "server-uuid")
+	writeIdentity(t, clientDir, "client-uuid")
+	writeAdmission(t, serverDir)
+	writeAdmission(t, clientDir)
+	writePin(t, serverDir, "client-uuid", clientCertPEM(t, clientDir))
+	writePin(t, clientDir, "server-uuid", serverCert)
+
+	clientMesh := clustertrust.Open(clientDir)
+	if _, ok := relayTLSConfig(clientMesh, "server-display-name"); !ok {
+		t.Fatal("relay TLS config did not fall back to the pinned certificate")
+	}
+}
+
+func clientCertPEM(t *testing.T, dir string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, "node.crt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
 func writeIdentity(t *testing.T, dir, uuid string) ([]byte, []byte) {
 	t.Helper()
 	public, private, err := ed25519.GenerateKey(rand.Reader)
