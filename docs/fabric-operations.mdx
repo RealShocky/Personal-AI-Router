@@ -148,6 +148,30 @@ When checkpointing through WSL, PAIR creates the configured Linux slot
 directory with `wsl.exe ... mkdir -p` before launching the server. The path is
 passed as a structured argument and is never evaluated through a shell.
 
+### Keep a WSL worker online
+
+WSL can tear down an otherwise idle distribution. If the worker is installed
+as a systemd service inside WSL, install the included Windows keepalive task
+from the portable bundle or source tree:
+
+```powershell
+.\keepalive-wsl-worker.ps1 -Distro Ubuntu
+.\keepalive-wsl-worker.ps1 -Action Status
+```
+
+This creates one per-user scheduled task that runs `wsl.exe -d Ubuntu -- sleep
+infinity` at logon. It keeps the selected distro alive; systemd owns and
+restarts `nvpair-fabric-worker.service`, while Docker, SGLang, and unrelated
+WSL processes remain outside PAIR's control. Remove it with:
+
+```powershell
+.\keepalive-wsl-worker.ps1 -Action Remove -Distro Ubuntu
+```
+
+The task is required for unattended WSL workers that must remain eligible
+during host idle periods. A worker that loses its heartbeat is quarantined;
+when systemd restarts it, a fresh heartbeat epoch automatically re-admits it.
+
 ### Windows coordinator with a WSL llama-server
 
 If the CUDA-enabled `llama-server` exists only in WSL, enable **Run through
