@@ -49,6 +49,14 @@ export interface FabricGroupRequest {
     minGpuVramFreeBytes?: number
 }
 
+export interface FabricGroupPlan {
+    groupId: string
+    runtime: string
+    workers: string[]
+    endpoints: Record<string, string>
+    epoch: number
+}
+
 export interface FabricInferenceRequest {
     jobId: string
     modelDigest: string

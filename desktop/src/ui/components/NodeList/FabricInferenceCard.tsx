@@ -3,13 +3,14 @@
 
 import { useEffect, useState } from 'react'
 import { Button, Flex, FormField, Stack, Text, TextInput } from '@nvidia/foundations-react-core'
-import type { FabricExecution, FabricInferenceRequest, FabricStatus } from '@/shared/types/fabric'
+import type { FabricExecution, FabricGroupPlan, FabricInferenceRequest, FabricStatus } from '@/shared/types/fabric'
 
 const EMPTY_STATUS: FabricStatus = { workers: [], capacity: { workers: 0, memoryFree: 0, gpuVramTotal: 0, gpuVramFree: 0, gpuCount: 0 }, jobs: [], executions: [] }
 
 export default function FabricInferenceCard() {
     const [fabric, setFabric] = useState<FabricStatus>(EMPTY_STATUS)
     const [execution, setExecution] = useState<FabricExecution | null>(null)
+    const [plan, setPlan] = useState<FabricGroupPlan | null>(null)
     const [jobId, setJobId] = useState('pair-inference-1')
     const [modelDigest, setModelDigest] = useState('')
     const [serverPath, setServerPath] = useState('llama-server')
@@ -74,6 +75,20 @@ export default function FabricInferenceCard() {
             setExecution(await window.pairApi.fabric.startInference(request))
         })
 
+    const dryRun = () =>
+        run(async () => {
+            const goal = Number(workerGoal)
+            const request = {
+                groupId: jobId.trim(),
+                runtime: 'llama.cpp',
+                backends: ['cuda'],
+                workerGoal: goal,
+                allowMixed: false,
+                modelDigest: modelDigest.trim()
+            }
+            setPlan(await window.pairApi.fabric.planGroup(request))
+        })
+
     const stop = () => run(async () => {
         await window.pairApi.fabric.stopInference(jobId.trim())
         setExecution(null)
@@ -99,10 +114,12 @@ export default function FabricInferenceCard() {
                     <FormField slotLabel="Checkpoint seconds"><TextInput value={checkpointInterval} onValueChange={setCheckpointInterval} disabled={busy} size="small" /></FormField>
                 </Flex>
                 <Flex gap="2">
+                    <Button kind="secondary" size="small" onClick={dryRun} disabled={busy || Number(workerGoal) <= 0}>Preview admission</Button>
                     <Button kind="primary" color="brand" size="small" onClick={start} disabled={busy || readyCuda < Number(workerGoal)}>Start distributed inference</Button>
                     <Button kind="secondary" size="small" onClick={stop} disabled={busy || execution?.state !== 'running'}>Stop inference</Button>
                 </Flex>
                 {execution && <Text kind="body/regular/sm" className="text-subtle-color">{execution.jobId}: {execution.state} · {execution.rpcPeers} remote RPC peer{execution.rpcPeers === 1 ? '' : 's'} · port {execution.httpPort}</Text>}
+                {plan && <Text kind="body/regular/sm" className="text-subtle-color">Admission ready: {plan.workers.join(', ')} · epoch {plan.epoch}</Text>}
                 {error && <Text kind="body/regular/sm" className="text-error-color">{error}</Text>}
             </Stack>
         </div>

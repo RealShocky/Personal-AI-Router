@@ -13,7 +13,7 @@ import type { NodeItem } from '@/shared/types/nodes'
 import type { ServiceError } from '@/shared/types/errors'
 import type { NodeItemMetrics } from '@/shared/types/metrics'
 import type { Workload } from '@/shared/types/workloads'
-import type { FabricStatus, FabricTrainingRequest, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingNode, FabricInferenceRequest, FabricExecution } from '@/shared/types/fabric'
+import type { FabricStatus, FabricTrainingRequest, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingNode, FabricInferenceRequest, FabricExecution, FabricGroupPlan, FabricGroupRequest } from '@/shared/types/fabric'
 import type { AppInitialSnapshot, ClusterInitialSnapshot } from '@/shared/types/bootstrap'
 
 // ---------------------------------------------------------------------------
@@ -83,6 +83,8 @@ export interface IDiscoveryApi {
 export interface IFabricApi {
     /** Read-only coordinator snapshot for the logical distributed inference fabric. */
     getStatus(): Promise<FabricStatus>
+    /** Ask the coordinator to admit a group without launching a job. */
+    planGroup(request: FabricGroupRequest): Promise<FabricGroupPlan>
     startInference(request: FabricInferenceRequest): Promise<FabricExecution>
     getInferenceStatus(jobId: string): Promise<FabricExecution>
     stopInference(jobId: string): Promise<{ stopped: boolean }>
@@ -186,6 +188,7 @@ export function createPairApi(transport: ServiceTransport): IPairApi {
         engines: createEngineApi(transport),
         fabric: {
             getStatus: () => transport.invoke('fabric:get-status'),
+            planGroup: request => transport.invoke('fabric:plan', request),
             startInference: request => transport.invoke('fabric:inference-start', request),
             getInferenceStatus: jobId => transport.invoke('fabric:inference-status', { jobId }),
             stopInference: jobId => transport.invoke('fabric:inference-stop', { jobId }),

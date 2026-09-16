@@ -4,7 +4,7 @@
 import type { WsInvokeChannel, WsInvokeRequest, WsInvokeResponse } from '@/shared/types/ws-channels'
 import type { ClusterInitialSnapshot } from '@/shared/types/bootstrap'
 import type { ClusterNode, ClusterNodeIdentity, Invite } from '@/shared/types/cluster'
-import type { FabricStatus, FabricWorker, FabricJob, FabricExecution, FabricCapacity, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingRequest, FabricTrainingNode, FabricInferenceRequest } from '@/shared/types/fabric'
+import type { FabricStatus, FabricWorker, FabricJob, FabricExecution, FabricCapacity, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingRequest, FabricTrainingNode, FabricInferenceRequest, FabricGroupPlan } from '@/shared/types/fabric'
 import type { EngineType } from '@/shared/types/engines'
 import type { ServiceError } from '@/shared/types/errors'
 import {
@@ -96,6 +96,24 @@ function fabricWorkerState(value: JsonValue | undefined): FabricWorker['state'] 
 function parseFabricExecution(value: JsonValue | undefined): FabricExecution {
     const obj = objectValue(value)
     return { jobId: stringValue(obj?.jobId), pid: numberValue(obj?.pid), state: stringValue(obj?.state), rpcPeers: numberValue(obj?.rpcPeers), httpPort: numberValue(obj?.httpPort) }
+}
+
+export function parseFabricGroupPlan(value: JsonValue | undefined): FabricGroupPlan {
+    const obj = objectValue(value)
+    const endpointsObject = objectValue(obj?.endpoints)
+    const endpoints: Record<string, string> = {}
+    if (endpointsObject) {
+        for (const [workerId, endpoint] of Object.entries(endpointsObject)) {
+            if (typeof endpoint === 'string') endpoints[workerId] = endpoint
+        }
+    }
+    return {
+        groupId: stringValue(obj?.groupId),
+        runtime: stringValue(obj?.runtime),
+        workers: stringArray(obj?.workers),
+        endpoints,
+        epoch: numberValue(obj?.epoch)
+    }
 }
 
 export function parseFabricStatus(value: JsonValue | undefined): FabricStatus {
@@ -1096,6 +1114,10 @@ const EMPTY_SERVICE_BRIDGE_HANDLERS: BridgeHandlerMap = {
     'discovery:get-nodes': () => getModularBridgeState().getAvailableNodes(),
 
     'fabric:get-status': async () => parseFabricStatus(await callCluster('fabric:get-status')),
+    'fabric:plan': async payload => {
+        if (!payload) throw new Error('fabric group request is required')
+        return parseFabricGroupPlan(await callCluster('fabric:plan-group', fabricGroupRequestJson(payload)))
+    },
     'fabric:inference-start': async payload => parseFabricExecution(await callCluster('fabric:job-start', fabricInferenceRequestJson(payload))),
     'fabric:inference-status': async payload => parseFabricExecution(await callCluster('fabric:job-status', payload)),
     'fabric:inference-stop': async payload => {
