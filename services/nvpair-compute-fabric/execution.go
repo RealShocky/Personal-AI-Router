@@ -82,6 +82,12 @@ func (m *ExecutionManager) StartWithExecutionPlan(request StartRequest, executio
 			group.Endpoints[assignment.WorkerID] = assignment.Endpoint
 		}
 	}
+	request.Group.GroupID = group.GroupID
+	request.Group.Runtime = group.Runtime
+	request.Group.WorkerGoal = uint32(len(group.Workers))
+	if request.Group.ModelDigest == "" {
+		request.Group.ModelDigest = executionPlan.ModelDigest
+	}
 	return m.Start(request, group)
 }
 

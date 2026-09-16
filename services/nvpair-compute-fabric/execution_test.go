@@ -76,6 +76,45 @@ func TestExecutionManagerRejectsInvalidExecutionPlanBeforeLaunch(t *testing.T) {
 	}
 }
 
+func TestExecutionManagerCarriesExecutionPlanGroupIntoRecoveryState(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager := NewExecutionManager(ctx, "missing-cluster")
+	manager.command = func(ctx context.Context, path string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "go", "version")
+	}
+	plan := fabricwire.ExecutionPlan{
+		Version:       1,
+		PlanID:        "plan-1",
+		Epoch:         7,
+		Runtime:       "llama.cpp",
+		ModelDigest:   "sha256:model",
+		ShardStrategy: fabricwire.ShardTensor,
+		Transport:     fabricwire.TransportLocal,
+		Workers: []fabricwire.WorkerAssignment{{
+			WorkerID:          "w1",
+			MemoryBudgetBytes: 1,
+		}},
+		Checkpoint: fabricwire.CheckpointPolicy{Enabled: true, IntervalSteps: 1},
+		Failover:   fabricwire.FailoverPolicy{Enabled: true, MaxAttempts: 1},
+	}
+	if _, err := manager.StartWithExecutionPlan(StartRequest{
+		JobID:       "job-1",
+		ModelDigest: "sha256:model",
+		ServerPath:  "llama-server",
+		ModelPath:   "model.gguf",
+		HTTPPort:    11450,
+	}, plan); err != nil {
+		t.Fatal(err)
+	}
+	manager.mu.Lock()
+	running := manager.executions["job-1"]
+	manager.mu.Unlock()
+	if running == nil || running.group.GroupID != "plan-1" || running.group.Runtime != "llama.cpp" || running.group.WorkerGoal != 1 {
+		t.Fatalf("recovery group = %+v", running)
+	}
+}
+
 func TestExecutionManagerAutomaticallyRecoversFailedJobIntoFreshGroupEpoch(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
