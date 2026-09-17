@@ -6,7 +6,8 @@ SPDX-License-Identifier: Apache-2.0
 [CmdletBinding()]
 param(
     [string]$OutputDir,
-    [string]$Binary
+    [string]$Binary,
+    [string]$CudaPageHelper
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -19,6 +20,10 @@ Remove-Item -LiteralPath $stage -Force -Recurse -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item $Binary (Join-Path $stage 'nvpair-compute-fabric.exe')
+if (-not [string]::IsNullOrWhiteSpace($CudaPageHelper)) {
+    if (-not (Test-Path -LiteralPath $CudaPageHelper -PathType Leaf)) { throw "CUDA page helper not found: $CudaPageHelper" }
+    Copy-Item $CudaPageHelper (Join-Path $stage 'pair-cuda-page.exe')
+}
 Copy-Item (Join-Path $PSScriptRoot 'run-fabric-worker.ps1') $stage
 Copy-Item (Join-Path $PSScriptRoot 'install-fabric-worker-windows.ps1') $stage
 Copy-Item (Join-Path $PSScriptRoot 'keepalive-wsl-worker.ps1') $stage
@@ -32,6 +37,9 @@ Copy-Item (Join-Path $root 'docs\fabric-operations.mdx') (Join-Path $stage 'fabr
 Copy-Item (Join-Path $root 'docs\README.md') (Join-Path $stage 'PAIR-documentation.md')
 @('PAIR Fabric portable Windows worker','Run .\run-fabric-worker.ps1 after setting the required PAIR_* environment variables.','For WSL2 workers, run .\keepalive-wsl-worker.ps1 -Distro Ubuntu to keep the distro alive across idle periods.','Run .\configure-fabric-firewall.ps1 from elevated PowerShell when a mirrored WSL worker must accept LAN peers.','This bundle contains no cluster identity, certificates, private keys, or models.') | Set-Content (Join-Path $stage 'README.txt') -Encoding utf8
 @('PAIR_COORDINATOR_URL=https://coordinator.example:14324','PAIR_WORKER_ID=win-worker-01','PAIR_NODE_ID=WIN-01','PAIR_CLUSTER_DIR=C:\Users\you\AppData\Local\PAIR\cluster','PAIR_RUNTIME=cpu','PAIR_BACKEND=cpu') | Set-Content (Join-Path $stage 'fabric-worker.env.example') -Encoding ascii
+if (Test-Path -LiteralPath (Join-Path $stage 'pair-cuda-page.exe')) {
+    Add-Content (Join-Path $stage 'fabric-worker.env.example') 'PAIR_CUDA_PAGE_HELPER=.\pair-cuda-page.exe'
+}
 Get-FileHash (Join-Path $stage 'nvpair-compute-fabric.exe') -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  nvpair-compute-fabric.exe" } | Set-Content (Join-Path $stage 'SHA256SUMS') -Encoding ascii
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
 Write-Host "Created $zip"

@@ -15,6 +15,10 @@ ZIPFILE="$OUT/fabric-linux-$ARCH_LABEL.zip"
 rm -rf "$STAGE" "$ZIPFILE"
 mkdir -p "$STAGE"
 cp "$BINARY" "$STAGE/nvpair-compute-fabric"
+if [[ -n "${PAIR_CUDA_PAGE_HELPER:-}" ]]; then
+  [[ -f "$PAIR_CUDA_PAGE_HELPER" ]] || { echo "CUDA page helper not found: $PAIR_CUDA_PAGE_HELPER" >&2; exit 1; }
+  cp "$PAIR_CUDA_PAGE_HELPER" "$STAGE/pair-cuda-page"
+fi
 if [[ -f "$CLUSTER_MANAGER" ]]; then cp "$CLUSTER_MANAGER" "$STAGE/nvpair-cluster-manager"; fi
 cp "$ROOT/scripts/install-fabric-worker.sh" "$STAGE/"
 cp "$ROOT/scripts/pair-training-canary.py" "$STAGE/"
@@ -39,6 +43,7 @@ PAIR_RUNTIME=cpu
 PAIR_BACKEND=cpu
 PAIR_TRAINING_HOST_ROOT=
 EOF
+if [[ -f "$STAGE/pair-cuda-page" ]]; then echo 'PAIR_CUDA_PAGE_HELPER=$PWD/pair-cuda-page' >> "$STAGE/fabric-worker.env.example"; fi
 chmod +x "$STAGE/nvpair-compute-fabric" "$STAGE/install-fabric-worker.sh" "$STAGE/configure-nccl-ports.sh"
 if [[ -f "$STAGE/nvpair-cluster-manager" ]]; then
   (cd "$STAGE" && sha256sum nvpair-compute-fabric nvpair-cluster-manager > SHA256SUMS)

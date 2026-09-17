@@ -75,6 +75,7 @@ const STYLE_BY_EXTENSION = new Map([
     ['.mjs', SLASH],
     ['.cjs', SLASH],
     ['.swift', SLASH],
+    ['.cu', SLASH],
     ['.css', CSS],
     ['.sh', HASH],
     ['.bash', HASH],

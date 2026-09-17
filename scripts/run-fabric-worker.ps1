@@ -32,6 +32,11 @@ if ($env:PAIR_RPC_TARGET) { $arguments += @('--rpc-target',$env:PAIR_RPC_TARGET)
 if ($env:PAIR_RPC_SERVER_PATH) { $arguments += @('--rpc-server-path',$env:PAIR_RPC_SERVER_PATH) }
 if ($env:PAIR_RPC_PORT) { $arguments += @('--rpc-port',$env:PAIR_RPC_PORT) }
 if ($env:PAIR_MODEL_DIGEST) { $arguments += @('--model-digest',$env:PAIR_MODEL_DIGEST) }
+if ($env:PAIR_CUDA_PAGE_HELPER) {
+    $cudaHelper = $env:PAIR_CUDA_PAGE_HELPER
+    if (-not [System.IO.Path]::IsPathRooted($cudaHelper)) { $cudaHelper = Join-Path $PSScriptRoot $cudaHelper }
+    $arguments += @('--cuda-page-helper',$cudaHelper)
+}
 
 & $Binary @arguments
 exit $LASTEXITCODE

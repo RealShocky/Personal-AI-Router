@@ -63,6 +63,7 @@ func main() {
 	nodeID := flag.String("node-id", "", "stable host identity for worker mode")
 	runtimeName := flag.String("runtime", "cpu", "worker runtime label: cpu, cuda, or metal")
 	backend := flag.String("backend", "cpu", "comma-separated worker backends")
+	cudaPageHelper := flag.String("cuda-page-helper", "", "optional CUDA page staging helper executable")
 	logLevel := flag.String("log-level", "info", "shared service log level: debug, info, warn, or error")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	daemon := flag.Bool("daemon", false, "run without a JSON-RPC stdin session")
@@ -91,6 +92,9 @@ func main() {
 	defer cancel()
 	mgr := NewManager(*timeout)
 	logicalDevice := NewLogicalDeviceManager(mgr)
+	if *cudaPageHelper != "" {
+		logicalDevice.SetProvider(fabricwire.ProviderCUDA, NewCUDAProvider(*cudaPageHelper, "0"))
+	}
 	logicalDevice.SetPageTransferRuntime(newLogicalPageStore(*clusterDir), newLogicalPageClient(*clusterDir))
 	jobs := NewJobStore(*stateDir)
 	executions := NewExecutionManager(ctx, *clusterDir)

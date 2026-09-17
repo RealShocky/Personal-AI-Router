@@ -103,6 +103,12 @@ path. The operation is exposed through the typed
 `fabric:logical-device-execute` API so future CUDA and Metal adapters can use
 the same plan-and-epoch contract.
 
+An optional CUDA page provider now uses a separately built helper to allocate a
+local CUDA buffer and perform explicit host/device transfers. This is a real
+local GPU staging path, not shared remote VRAM; the helper must be installed and
+selected explicitly, and it does not make CPU, DGX, AWS, or Metal memory appear
+as one Windows CUDA device.
+
 Sources: [CUDA multi-GPU programming](https://docs.nvidia.com/cuda/cuda-programming-guide/03-advanced/multi-gpu-systems.html),
 [CUDA virtual memory management](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/virtual-memory-management.html),
 [NVSHMEM](https://docs.nvidia.com/nvshmem/api/latest/introduction.html),

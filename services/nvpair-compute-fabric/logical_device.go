@@ -34,6 +34,16 @@ func (m *LogicalDeviceManager) SetPageTransferRuntime(store *PageStore, client *
 	m.pageClient = client
 }
 
+func (m *LogicalDeviceManager) SetProvider(provider fabricwire.Provider, implementation LogicalProvider) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if implementation == nil {
+		delete(m.providers, provider)
+		return
+	}
+	m.providers[provider] = implementation
+}
+
 func (m *LogicalDeviceManager) TransferPageIfConfigured(ctx context.Context, request fabricwire.TransferRequest) (fabricwire.TransferStatus, error) {
 	m.mu.RLock()
 	store, client := m.pageStore, m.pageClient

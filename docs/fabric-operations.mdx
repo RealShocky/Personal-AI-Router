@@ -379,7 +379,11 @@ other paired nodes can reach; do not advertise the old NAT address.
 Use `install-fabric-worker-windows.ps1 -Task` to register a per-user logon
 task. It needs no administrator rights. For a Windows GPU, set
 `PAIR_RUNTIME=cuda` and use a CUDA-capable llama.cpp RPC build; otherwise use
-`cpu`. The launcher passes `--daemon`, so it stays alive without broker stdin.
+`cpu`. The optional `pair-cuda-page.exe` helper performs explicit GPU page
+staging (`cudaMalloc`, host/device copies, and synchronization); set
+`PAIR_CUDA_PAGE_HELPER=.\pair-cuda-page.exe` when it is included. It requires a
+compatible NVIDIA display driver and CUDA runtime on the host. The launcher
+passes `--daemon`, so it stays alive without broker stdin.
 
 ### Linux: DGX or mini-PC
 
@@ -397,7 +401,9 @@ sudo systemctl enable --now nvpair-fabric-worker
 
 Use `PAIR_RUNTIME=cpu` and `PAIR_BACKEND=cpu` on CPU-only mini-PCs. Set
 `PAIR_RUNTIME=cuda` only after `nvidia-smi` and a local CUDA llama.cpp build
-work. The service restarts after a crash and re-enters the fabric through a
+work. If the Linux `pair-cuda-page` helper is supplied in the bundle, set
+`PAIR_CUDA_PAGE_HELPER=$PWD/pair-cuda-page` for explicit CUDA page staging.
+The service restarts after a crash and re-enters the fabric through a
 fresh authenticated heartbeat. If a CUDA llama.cpp build already exists, pass
 its `ggml-rpc-server` through `PAIR_RPC_SERVER_PATH`; the installer supervises
 that helper without changing the source project or its models.
