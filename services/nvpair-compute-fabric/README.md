@@ -220,6 +220,12 @@ atomically publishes the page, and returns bounded JSON metadata. `GET` on the
 same endpoint retrieves a verified page by `pageId`; both methods require the
 existing pinned cluster mTLS identity.
 
+The initial local execution adapter is CPU `copy`: it reads a verified page,
+writes a new verified page, and returns provider metadata. CUDA and Metal are
+not routed through this adapter; their provider-specific execution must be
+negotiated and implemented separately rather than being mislabeled as CPU or
+remote-pointer execution.
+
 ## Test
 
 ```bash

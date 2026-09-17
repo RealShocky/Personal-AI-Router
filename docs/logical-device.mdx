@@ -92,11 +92,14 @@ headers into a bounded, atomic local page store. This is a PAIR data channel,
 not shared CUDA address space; CUDA/Metal adapters may optimize local copies,
 but ownership is published only after peer metadata verifies the bytes.
 
-Provider-level tensor execution and the binary data channel are still the next
-runtime phase. Until those are implemented and benchmarked, a queued transfer
-is control-plane state rather than proof that tensor bytes moved, and aggregate
-capacity in the dashboard means schedulable fleet capacity, not a contiguous
-memory pool.
+The binary data channel is implemented and tested, and the first provider-level
+execution proof is the local CPU page-copy adapter. A queued transfer still
+means control-plane state until the configured source and destination stores
+complete the authenticated byte transfer. Aggregate capacity in the dashboard
+means schedulable fleet capacity, not a contiguous memory pool. The adapter
+creates a verified output page without exposing a pointer. CUDA and Metal
+execution remain provider-specific milestones and are not claimed by this CPU
+path.
 
 Sources: [CUDA multi-GPU programming](https://docs.nvidia.com/cuda/cuda-programming-guide/03-advanced/multi-gpu-systems.html),
 [CUDA virtual memory management](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/virtual-memory-management.html),
