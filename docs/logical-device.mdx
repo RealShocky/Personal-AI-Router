@@ -99,7 +99,9 @@ complete the authenticated byte transfer. Aggregate capacity in the dashboard
 means schedulable fleet capacity, not a contiguous memory pool. The adapter
 creates a verified output page without exposing a pointer. CUDA and Metal
 execution remain provider-specific milestones and are not claimed by this CPU
-path.
+path. The operation is exposed through the typed
+`fabric:logical-device-execute` API so future CUDA and Metal adapters can use
+the same plan-and-epoch contract.
 
 Sources: [CUDA multi-GPU programming](https://docs.nvidia.com/cuda/cuda-programming-guide/03-advanced/multi-gpu-systems.html),
 [CUDA virtual memory management](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/virtual-memory-management.html),

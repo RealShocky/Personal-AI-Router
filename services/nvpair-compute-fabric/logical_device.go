@@ -24,6 +24,7 @@ type LogicalDeviceManager struct {
 	pageStore  *PageStore
 	pageClient *http.Client
 	commits    map[string]fabricwire.LogicalDeviceStatus
+	providers  map[fabricwire.Provider]LogicalProvider
 }
 
 func (m *LogicalDeviceManager) SetPageTransferRuntime(store *PageStore, client *http.Client) {
@@ -51,7 +52,30 @@ func NewLogicalDeviceManager(workers *Manager) *LogicalDeviceManager {
 		states:    make(map[string]fabricwire.LogicalDeviceState),
 		transfers: make(map[string]fabricwire.TransferStatus),
 		commits:   make(map[string]fabricwire.LogicalDeviceStatus),
+		providers: map[fabricwire.Provider]LogicalProvider{fabricwire.ProviderCPU: NewCPUProvider()},
 	}
+}
+
+func (m *LogicalDeviceManager) Execute(ctx context.Context, request fabricwire.LogicalExecuteRequest) (fabricwire.LogicalExecuteResult, error) {
+	m.mu.RLock()
+	plan, ok := m.plans[request.PlanID]
+	provider := m.providers[request.Provider]
+	store := m.pageStore
+	m.mu.RUnlock()
+	if !ok {
+		return fabricwire.LogicalExecuteResult{}, fmt.Errorf("logical device plan %q not found", request.PlanID)
+	}
+	if err := request.LogicalDeviceRequest.ValidateForEpoch(plan.Epoch); err != nil {
+		return fabricwire.LogicalExecuteResult{}, err
+	}
+	if provider == nil {
+		return fabricwire.LogicalExecuteResult{}, fmt.Errorf("logical provider %q is unavailable", request.Provider)
+	}
+	result, err := provider.Execute(ctx, store, logicalExecuteRequest(request))
+	if err != nil {
+		return fabricwire.LogicalExecuteResult{}, err
+	}
+	return fabricwire.LogicalExecuteResult{Provider: request.Provider, Output: fabricwire.LogicalPageMetadata{PageID: result.Output.PageID, Bytes: result.Output.Bytes, Digest: result.Output.Digest}}, nil
 }
 
 func (m *LogicalDeviceManager) Describe() fabricwire.LogicalDeviceDescribe {

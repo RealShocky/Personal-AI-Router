@@ -4,7 +4,7 @@
 import type { WsInvokeChannel, WsInvokeRequest, WsInvokeResponse } from '@/shared/types/ws-channels'
 import type { ClusterInitialSnapshot } from '@/shared/types/bootstrap'
 import type { ClusterNode, ClusterNodeIdentity, Invite } from '@/shared/types/cluster'
-import type { FabricStatus, FabricWorker, FabricJob, FabricExecution, FabricCapacity, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingRequest, FabricTrainingNode, FabricInferenceRequest, FabricGroupPlan, FabricLogicalDeviceDescribe, FabricProvider, FabricProviderCapability, FabricMemoryTier, FabricLogicalDevicePlan, FabricLogicalDeviceStatus, FabricTransferStatus, FabricLogicalDevicePlanRequest, FabricTransferRequest } from '@/shared/types/fabric'
+import type { FabricStatus, FabricWorker, FabricJob, FabricExecution, FabricCapacity, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingRequest, FabricTrainingNode, FabricInferenceRequest, FabricGroupPlan, FabricLogicalDeviceDescribe, FabricProvider, FabricProviderCapability, FabricMemoryTier, FabricLogicalDevicePlan, FabricLogicalDeviceStatus, FabricTransferStatus, FabricLogicalDevicePlanRequest, FabricTransferRequest, FabricLogicalExecuteResult } from '@/shared/types/fabric'
 import type { EngineType } from '@/shared/types/engines'
 import type { ServiceError } from '@/shared/types/errors'
 import {
@@ -274,6 +274,20 @@ export function parseFabricLogicalDeviceStatus(value: JsonValue | undefined): Fa
     }
 }
 
+export function parseFabricLogicalExecuteResult(value: JsonValue | undefined): FabricLogicalExecuteResult {
+    const obj = objectValue(value)
+    const output = objectValue(obj?.output)
+    const provider = stringValue(obj?.provider)
+    return {
+        provider: provider === 'cuda' || provider === 'metal' ? provider : 'cpu',
+        output: {
+            pageId: stringValue(output?.pageId),
+            bytes: numberValue(output?.bytes),
+            digest: stringValue(output?.digest)
+        }
+    }
+}
+
 export function parseFabricTransferStatus(value: JsonValue | undefined): FabricTransferStatus {
     const obj = objectValue(value)
     const state = stringValue(obj?.state)
@@ -382,13 +396,27 @@ function fabricLogicalDeviceTransferJson(request: FabricTransferRequest): JsonOb
     return {
         protocolVersion: request.protocolVersion,
         requestId: request.requestId,
-        planId: request.planId,
-        epoch: request.epoch,
+        ...(request.planId === undefined ? {} : { planId: request.planId }),
+        ...(request.epoch === undefined ? {} : { epoch: request.epoch }),
         ...(request.deadlineUnixMs === undefined ? {} : { deadlineUnixMs: request.deadlineUnixMs }),
         pageId: request.pageId,
         targetWorkerId: request.targetWorkerId,
         targetTierId: request.targetTierId,
         expectedDigest: request.expectedDigest
+    }
+}
+
+function fabricLogicalExecuteRequestJson(request: WsInvokeRequest<'fabric:logical-device-execute'>): JsonObject {
+    return {
+        protocolVersion: request.protocolVersion,
+        requestId: request.requestId,
+        ...(request.planId === undefined ? {} : { planId: request.planId }),
+        ...(request.epoch === undefined ? {} : { epoch: request.epoch }),
+        ...(request.deadlineUnixMs === undefined ? {} : { deadlineUnixMs: request.deadlineUnixMs }),
+        provider: request.provider,
+        operation: request.operation,
+        inputPageId: request.inputPageId,
+        outputPageId: request.outputPageId
     }
 }
 
@@ -1317,6 +1345,10 @@ const EMPTY_SERVICE_BRIDGE_HANDLERS: BridgeHandlerMap = {
             ...(payload.deadlineUnixMs === undefined ? {} : { deadlineUnixMs: payload.deadlineUnixMs })
         }
         return parseFabricLogicalDeviceStatus(await callCluster('fabric:logical-device-commit', request))
+    },
+    'fabric:logical-device-execute': async payload => {
+        if (!payload) throw new Error('logical device execute request is required')
+        return parseFabricLogicalExecuteResult(await callCluster('fabric:logical-device-execute', fabricLogicalExecuteRequestJson(payload)))
     },
     'fabric:plan': async payload => {
         if (!payload) throw new Error('fabric group request is required')

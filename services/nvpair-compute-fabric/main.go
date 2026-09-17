@@ -1188,6 +1188,22 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		_ = codec.Respond(msg.ID, status)
+	case "fabric:logical-device-execute":
+		if logicalDevice == nil {
+			_ = codec.RespondError(msg.ID, -32001, "logical device manager unavailable")
+			return
+		}
+		var request fabricwire.LogicalExecuteRequest
+		if err := json.Unmarshal(msg.Params, &request); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid logical device execute request")
+			return
+		}
+		result, err := logicalDevice.Execute(context.Background(), request)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32001, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, result)
 	case "fabric:logical-device-transfer":
 		if logicalDevice == nil {
 			_ = codec.RespondError(msg.ID, -32001, "logical device manager unavailable")

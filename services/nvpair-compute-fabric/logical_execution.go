@@ -8,6 +8,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+
+	"nvpair-shared/fabricwire"
 )
 
 const LogicalOperationCopy = "copy"
@@ -21,6 +23,10 @@ type LogicalExecuteRequest struct {
 type LogicalExecuteResult struct {
 	Provider string       `json:"provider"`
 	Output   PageMetadata `json:"output"`
+}
+
+func logicalExecuteRequest(request fabricwire.LogicalExecuteRequest) LogicalExecuteRequest {
+	return LogicalExecuteRequest{Operation: request.Operation, InputPageID: request.InputPageID, OutputPageID: request.OutputPageID}
 }
 
 type LogicalProvider interface {

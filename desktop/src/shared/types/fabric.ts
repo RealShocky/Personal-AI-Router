@@ -180,6 +180,18 @@ export interface FabricLogicalDeviceCommitRequest extends FabricLogicalDeviceReq
     epoch: number
 }
 
+export interface FabricLogicalExecuteRequest extends FabricLogicalDeviceRequest {
+    provider: FabricProvider
+    operation: string
+    inputPageId: string
+    outputPageId: string
+}
+
+export interface FabricLogicalExecuteResult {
+    provider: FabricProvider
+    output: { pageId: string; bytes: number; digest: string }
+}
+
 export interface FabricTransferStatus {
     transferId: string
     planId: string

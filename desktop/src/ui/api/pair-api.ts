@@ -13,7 +13,7 @@ import type { NodeItem } from '@/shared/types/nodes'
 import type { ServiceError } from '@/shared/types/errors'
 import type { NodeItemMetrics } from '@/shared/types/metrics'
 import type { Workload } from '@/shared/types/workloads'
-import type { FabricStatus, FabricTrainingRequest, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingNode, FabricInferenceRequest, FabricExecution, FabricGroupPlan, FabricGroupRequest, FabricLogicalDeviceDescribe, FabricLogicalDevicePlanRequest, FabricLogicalDevicePlan, FabricLogicalDeviceStatus, FabricTransferRequest, FabricTransferStatus, FabricLogicalDeviceCommitRequest } from '@/shared/types/fabric'
+import type { FabricStatus, FabricTrainingRequest, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingNode, FabricInferenceRequest, FabricExecution, FabricGroupPlan, FabricGroupRequest, FabricLogicalDeviceDescribe, FabricLogicalDevicePlanRequest, FabricLogicalDevicePlan, FabricLogicalDeviceStatus, FabricTransferRequest, FabricTransferStatus, FabricLogicalDeviceCommitRequest, FabricLogicalExecuteRequest, FabricLogicalExecuteResult } from '@/shared/types/fabric'
 import type { AppInitialSnapshot, ClusterInitialSnapshot } from '@/shared/types/bootstrap'
 
 // ---------------------------------------------------------------------------
@@ -89,6 +89,7 @@ export interface IFabricApi {
     transferLogicalDevicePage(request: FabricTransferRequest): Promise<FabricTransferStatus>
     recoverLogicalDevice(planId: string, workers: string[]): Promise<FabricLogicalDevicePlan>
     commitLogicalDevice(request: FabricLogicalDeviceCommitRequest): Promise<FabricLogicalDeviceStatus>
+    executeLogicalDevice(request: FabricLogicalExecuteRequest): Promise<FabricLogicalExecuteResult>
     /** Ask the coordinator to admit a group without launching a job. */
     planGroup(request: FabricGroupRequest): Promise<FabricGroupPlan>
     startInference(request: FabricInferenceRequest): Promise<FabricExecution>
@@ -200,6 +201,7 @@ export function createPairApi(transport: ServiceTransport): IPairApi {
             transferLogicalDevicePage: request => transport.invoke('fabric:logical-device-transfer', request),
             recoverLogicalDevice: (planId, workers) => transport.invoke('fabric:logical-device-recover', { planId, workers }),
             commitLogicalDevice: request => transport.invoke('fabric:logical-device-commit', request),
+            executeLogicalDevice: request => transport.invoke('fabric:logical-device-execute', request),
             planGroup: request => transport.invoke('fabric:plan', request),
             startInference: request => transport.invoke('fabric:inference-start', request),
             getInferenceStatus: jobId => transport.invoke('fabric:inference-status', { jobId }),

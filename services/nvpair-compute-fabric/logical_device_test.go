@@ -4,11 +4,51 @@
 package main
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"nvpair-shared/fabricwire"
 )
+
+func TestLogicalDeviceManagerExecutesCPUPageCopy(t *testing.T) {
+	workers := NewManager(time.Minute)
+	workers.AcceptHeartbeat(fabricwire.Heartbeat{
+		WorkerID: "cpu-a", NodeID: "host-a", Epoch: 1, State: fabricwire.WorkerReady,
+		Runtime: "pair", Backends: []string{"cpu"}, MemoryFree: 8 << 30,
+	}, time.Now())
+	store, err := NewPageStore(t.TempDir(), 1<<20)
+	if err != nil {
+		t.Fatalf("NewPageStore() error = %v", err)
+	}
+	input := "hello logical device"
+	inputDigest := pageDigest([]byte(input))
+	if _, err := store.Put(context.Background(), "input", uint64(len(input)), inputDigest, strings.NewReader(input)); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	logical := NewLogicalDeviceManager(workers)
+	logical.SetPageTransferRuntime(store, nil)
+	plan, err := logical.Plan(fabricwire.LogicalDevicePlanRequest{
+		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "execute-plan"},
+		Runtime:              "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
+		Providers: []fabricwire.Provider{fabricwire.ProviderCPU}, WorkerGoal: 1,
+		Pages: []fabricwire.PageSpec{{PageID: "input", Bytes: uint64(len(input)), Digest: inputDigest}},
+	})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	result, err := logical.Execute(context.Background(), fabricwire.LogicalExecuteRequest{
+		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "execute-1", PlanID: plan.PlanID, Epoch: plan.Epoch},
+		Provider:             fabricwire.ProviderCPU, Operation: LogicalOperationCopy, InputPageID: "input", OutputPageID: "output",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if result.Provider != fabricwire.ProviderCPU || result.Output.PageID != "output" || result.Output.Digest != inputDigest {
+		t.Fatalf("Execute() = %#v, want verified CPU output", result)
+	}
+}
 
 func TestLogicalDeviceManagerPlansCPUPageOnReadyWorker(t *testing.T) {
 	now := time.Now()
@@ -226,7 +266,7 @@ func TestLogicalDeviceManagerCommitsOnlyVerifiedPages(t *testing.T) {
 	pageDigestValue := pageDigest([]byte("verified"))
 	plan, err := logical.Plan(fabricwire.LogicalDevicePlanRequest{
 		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "commit-plan"},
-		Runtime: "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
+		Runtime:              "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
 		Providers: []fabricwire.Provider{fabricwire.ProviderCPU}, WorkerGoal: 1,
 		Pages: []fabricwire.PageSpec{{PageID: "page-1", Bytes: 8, Digest: pageDigestValue}},
 	})
@@ -243,7 +283,7 @@ func TestLogicalDeviceManagerCommitsOnlyVerifiedPages(t *testing.T) {
 
 	unverified, err := logical.Plan(fabricwire.LogicalDevicePlanRequest{
 		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "unverified-plan"},
-		Runtime: "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
+		Runtime:              "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
 		Providers: []fabricwire.Provider{fabricwire.ProviderCPU}, WorkerGoal: 1,
 		Pages: []fabricwire.PageSpec{{PageID: "page-2", Bytes: 8}},
 	})

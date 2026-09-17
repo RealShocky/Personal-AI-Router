@@ -225,6 +225,9 @@ writes a new verified page, and returns provider metadata. CUDA and Metal are
 not routed through this adapter; their provider-specific execution must be
 negotiated and implemented separately rather than being mislabeled as CPU or
 remote-pointer execution.
+The same operation is callable through `fabric:logical-device-execute` with a
+plan ID and epoch, so the desktop API has one typed entry point for future CUDA
+and Metal providers.
 
 ## Test
 

@@ -79,6 +79,25 @@ type LogicalDeviceCommitRequest struct {
 	LogicalDeviceRequest
 }
 
+type LogicalExecuteRequest struct {
+	LogicalDeviceRequest
+	Provider     Provider `json:"provider"`
+	Operation    string   `json:"operation"`
+	InputPageID  string   `json:"inputPageId"`
+	OutputPageID string   `json:"outputPageId"`
+}
+
+type LogicalExecuteResult struct {
+	Provider Provider            `json:"provider"`
+	Output   LogicalPageMetadata `json:"output"`
+}
+
+type LogicalPageMetadata struct {
+	PageID string `json:"pageId"`
+	Bytes  uint64 `json:"bytes"`
+	Digest string `json:"digest"`
+}
+
 func (r LogicalDeviceRequest) ValidateForEpoch(current uint64) error {
 	if r.ProtocolVersion != LogicalDeviceProtocolVersion {
 		return fmt.Errorf("unsupported logical device protocol version %d", r.ProtocolVersion)
@@ -118,23 +137,23 @@ type LogicalDevicePlan struct {
 type LogicalDeviceState string
 
 const (
-	LogicalDevicePlanned   LogicalDeviceState = "planned"
-	LogicalDeviceLeased    LogicalDeviceState = "leased"
-	LogicalDeviceRunning   LogicalDeviceState = "running"
-	LogicalDeviceDegraded  LogicalDeviceState = "degraded"
+	LogicalDevicePlanned    LogicalDeviceState = "planned"
+	LogicalDeviceLeased     LogicalDeviceState = "leased"
+	LogicalDeviceRunning    LogicalDeviceState = "running"
+	LogicalDeviceDegraded   LogicalDeviceState = "degraded"
 	LogicalDeviceRecovering LogicalDeviceState = "recovering"
-	LogicalDeviceCompleted LogicalDeviceState = "completed"
-	LogicalDeviceCancelled LogicalDeviceState = "cancelled"
+	LogicalDeviceCompleted  LogicalDeviceState = "completed"
+	LogicalDeviceCancelled  LogicalDeviceState = "cancelled"
 )
 
 type LogicalDeviceStatus struct {
-	PlanID       string             `json:"planId"`
-	Epoch        uint64             `json:"epoch"`
-	State        LogicalDeviceState `json:"state"`
-	Workers      []string           `json:"workers"`
-	Pages        []PagePlacement    `json:"pages"`
-	TransferIDs  []string           `json:"transferIds,omitempty"`
-	UpdatedAtMS  int64              `json:"updatedAtMs"`
+	PlanID      string             `json:"planId"`
+	Epoch       uint64             `json:"epoch"`
+	State       LogicalDeviceState `json:"state"`
+	Workers     []string           `json:"workers"`
+	Pages       []PagePlacement    `json:"pages"`
+	TransferIDs []string           `json:"transferIds,omitempty"`
+	UpdatedAtMS int64              `json:"updatedAtMs"`
 }
 
 func (p LogicalDevicePlan) Validate() error {
