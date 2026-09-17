@@ -10,6 +10,9 @@ $source = Split-Path -Parent $PSScriptRoot
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 Copy-Item -LiteralPath (Join-Path $source 'nvpair-compute-fabric.exe') -Destination $InstallDir -Force
 Copy-Item -LiteralPath (Join-Path $source 'run-fabric-worker.ps1') -Destination $InstallDir -Force
+if (Test-Path -LiteralPath (Join-Path $source 'pair-cuda-page.exe') -PathType Leaf) {
+    Copy-Item -LiteralPath (Join-Path $source 'pair-cuda-page.exe') -Destination $InstallDir -Force
+}
 Write-Host "Installed portable worker files in $InstallDir"
 Write-Host "Set PAIR_COORDINATOR_URL, PAIR_WORKER_ID, PAIR_NODE_ID, and PAIR_CLUSTER_DIR before running run-fabric-worker.ps1."
 if ($Task) {

@@ -19,6 +19,7 @@ PAIR_LLAMA_PORT="${PAIR_LLAMA_PORT:-0}"
 PAIR_LLAMA_RPC="${PAIR_LLAMA_RPC:-}"
 PAIR_HTTP_PORT="${PAIR_HTTP_PORT:-14324}"
 PAIR_RPC_TARGET="${PAIR_RPC_TARGET:-127.0.0.1:${PAIR_RPC_PORT}}"
+PAIR_CUDA_PAGE_HELPER="${PAIR_CUDA_PAGE_HELPER:-}"
 PAIR_HEARTBEAT_TIMEOUT="${PAIR_HEARTBEAT_TIMEOUT:-10s}"
 PAIR_TRAINING_CHECKPOINT_ROOT="${PAIR_TRAINING_CHECKPOINT_ROOT:-}"
 PAIR_TRAINING_HOST_ROOT="${PAIR_TRAINING_HOST_ROOT:-}"
@@ -31,21 +32,22 @@ if grep -qi microsoft /proc/version 2>/dev/null; then
 fi
 
 case "${PAIR_RUNTIME}" in cpu|cuda|metal) ;; *) echo "PAIR_RUNTIME must be cpu, cuda, or metal" >&2; exit 2 ;; esac
-for value in PAIR_FABRIC_BINARY PAIR_CLUSTER_DIR PAIR_COORDINATOR_URL PAIR_WORKER_ID PAIR_NODE_ID PAIR_ADVERTISE_URL PAIR_BACKEND PAIR_RPC_SERVER_PATH PAIR_LLAMA_SERVER_PATH PAIR_LLAMA_MODEL PAIR_LLAMA_RPC; do
+for value in PAIR_FABRIC_BINARY PAIR_CLUSTER_DIR PAIR_COORDINATOR_URL PAIR_WORKER_ID PAIR_NODE_ID PAIR_ADVERTISE_URL PAIR_BACKEND PAIR_RPC_SERVER_PATH PAIR_LLAMA_SERVER_PATH PAIR_LLAMA_MODEL PAIR_LLAMA_RPC PAIR_CUDA_PAGE_HELPER; do
   text="${!value:-}"
   case "${text}" in *$'\n'*|*$'\r'*) echo "${value} contains a newline" >&2; exit 2 ;; esac
 done
 
 install -d -m 0755 /opt/nvpair/fabric /etc/nvpair /var/lib/nvpair
 install -m 0755 "${PAIR_FABRIC_BINARY}" /opt/nvpair/fabric/nvpair-compute-fabric
+if [ -n "${PAIR_CUDA_PAGE_HELPER}" ]; then install -m 0755 "${PAIR_CUDA_PAGE_HELPER}" /opt/nvpair/fabric/pair-cuda-page; fi
 if [ -n "${PAIR_FABRIC_SHA256:-}" ]; then
   printf '%s  %s\n' "${PAIR_FABRIC_SHA256}" /opt/nvpair/fabric/nvpair-compute-fabric | sha256sum -c -
 fi
 
-printf '%q\n'   "PAIR_CLUSTER_DIR=${PAIR_CLUSTER_DIR}"   "PAIR_COORDINATOR_URL=${PAIR_COORDINATOR_URL}"   "PAIR_ADVERTISE_URL=${PAIR_ADVERTISE_URL}"   "PAIR_WORKER_ID=${PAIR_WORKER_ID}"   "PAIR_NODE_ID=${PAIR_NODE_ID}"   "PAIR_RUNTIME=${PAIR_RUNTIME}"   "PAIR_BACKEND=${PAIR_BACKEND}"   "PAIR_RPC_SERVER_PATH=${PAIR_RPC_SERVER_PATH}"   "PAIR_RPC_PORT=${PAIR_RPC_PORT}"   "PAIR_LLAMA_SERVER_PATH=${PAIR_LLAMA_SERVER_PATH}"   "PAIR_LLAMA_MODEL=${PAIR_LLAMA_MODEL}"   "PAIR_LLAMA_PORT=${PAIR_LLAMA_PORT}"   "PAIR_LLAMA_RPC=${PAIR_LLAMA_RPC}"   "PAIR_HTTP_PORT=${PAIR_HTTP_PORT}"   "PAIR_RPC_TARGET=${PAIR_RPC_TARGET}"   "PAIR_HEARTBEAT_TIMEOUT=${PAIR_HEARTBEAT_TIMEOUT}"   "PAIR_TRAINING_CHECKPOINT_ROOT=${PAIR_TRAINING_CHECKPOINT_ROOT}"   "PAIR_TRAINING_HOST_ROOT=${PAIR_TRAINING_HOST_ROOT}" > /etc/nvpair/fabric-worker.env
+printf '%q\n'   "PAIR_CLUSTER_DIR=${PAIR_CLUSTER_DIR}"   "PAIR_COORDINATOR_URL=${PAIR_COORDINATOR_URL}"   "PAIR_ADVERTISE_URL=${PAIR_ADVERTISE_URL}"   "PAIR_WORKER_ID=${PAIR_WORKER_ID}"   "PAIR_NODE_ID=${PAIR_NODE_ID}"   "PAIR_RUNTIME=${PAIR_RUNTIME}"   "PAIR_BACKEND=${PAIR_BACKEND}"   "PAIR_RPC_SERVER_PATH=${PAIR_RPC_SERVER_PATH}"   "PAIR_RPC_PORT=${PAIR_RPC_PORT}"   "PAIR_LLAMA_SERVER_PATH=${PAIR_LLAMA_SERVER_PATH}"   "PAIR_LLAMA_MODEL=${PAIR_LLAMA_MODEL}"   "PAIR_LLAMA_PORT=${PAIR_LLAMA_PORT}"   "PAIR_LLAMA_RPC=${PAIR_LLAMA_RPC}"   "PAIR_HTTP_PORT=${PAIR_HTTP_PORT}"   "PAIR_RPC_TARGET=${PAIR_RPC_TARGET}"   "PAIR_HEARTBEAT_TIMEOUT=${PAIR_HEARTBEAT_TIMEOUT}"   "PAIR_CUDA_PAGE_HELPER=${PAIR_CUDA_PAGE_HELPER}"   "PAIR_TRAINING_CHECKPOINT_ROOT=${PAIR_TRAINING_CHECKPOINT_ROOT}"   "PAIR_TRAINING_HOST_ROOT=${PAIR_TRAINING_HOST_ROOT}" > /etc/nvpair/fabric-worker.env
 chmod 0600 /etc/nvpair/fabric-worker.env
 
-printf '%s\n' '#!/bin/sh' 'set -eu' '. /etc/nvpair/fabric-worker.env' 'set -- /opt/nvpair/fabric/nvpair-compute-fabric --daemon --heartbeat-timeout "$PAIR_HEARTBEAT_TIMEOUT" --cluster-dir "$PAIR_CLUSTER_DIR" --coordinator-url "$PAIR_COORDINATOR_URL" --advertise-url "$PAIR_ADVERTISE_URL" --worker-id "$PAIR_WORKER_ID" --node-id "$PAIR_NODE_ID" --runtime "$PAIR_RUNTIME" --backend "$PAIR_BACKEND" --http-port "$PAIR_HTTP_PORT" --rpc-target "$PAIR_RPC_TARGET" --rpc-port "$PAIR_RPC_PORT"' 'if [ -n "$PAIR_RPC_SERVER_PATH" ]; then set -- "$@" --rpc-server-path "$PAIR_RPC_SERVER_PATH"; fi' 'if [ -n "$PAIR_LLAMA_SERVER_PATH" ]; then if [ -z "$PAIR_LLAMA_MODEL" ] || [ "$PAIR_LLAMA_PORT" = 0 ]; then echo "PAIR_LLAMA_SERVER_PATH requires PAIR_LLAMA_MODEL and PAIR_LLAMA_PORT" >&2; exit 2; fi; set -- "$@" --llama-server-path "$PAIR_LLAMA_SERVER_PATH" --llama-model "$PAIR_LLAMA_MODEL" --llama-port "$PAIR_LLAMA_PORT"; if [ -n "$PAIR_LLAMA_RPC" ]; then set -- "$@" --llama-rpc "$PAIR_LLAMA_RPC"; fi; fi' 'exec "$@"' > /opt/nvpair/fabric/run-worker
+printf '%s\n' '#!/bin/sh' 'set -eu' '. /etc/nvpair/fabric-worker.env' 'set -- /opt/nvpair/fabric/nvpair-compute-fabric --daemon --heartbeat-timeout "$PAIR_HEARTBEAT_TIMEOUT" --cluster-dir "$PAIR_CLUSTER_DIR" --coordinator-url "$PAIR_COORDINATOR_URL" --advertise-url "$PAIR_ADVERTISE_URL" --worker-id "$PAIR_WORKER_ID" --node-id "$PAIR_NODE_ID" --runtime "$PAIR_RUNTIME" --backend "$PAIR_BACKEND" --http-port "$PAIR_HTTP_PORT" --rpc-target "$PAIR_RPC_TARGET" --rpc-port "$PAIR_RPC_PORT"' 'if [ -n "$PAIR_RPC_SERVER_PATH" ]; then set -- "$@" --rpc-server-path "$PAIR_RPC_SERVER_PATH"; fi' 'if [ -n "$PAIR_CUDA_PAGE_HELPER" ]; then set -- "$@" --cuda-page-helper /opt/nvpair/fabric/pair-cuda-page; fi' 'if [ -n "$PAIR_LLAMA_SERVER_PATH" ]; then if [ -z "$PAIR_LLAMA_MODEL" ] || [ "$PAIR_LLAMA_PORT" = 0 ]; then echo "PAIR_LLAMA_SERVER_PATH requires PAIR_LLAMA_MODEL and PAIR_LLAMA_PORT" >&2; exit 2; fi; set -- "$@" --llama-server-path "$PAIR_LLAMA_SERVER_PATH" --llama-model "$PAIR_LLAMA_MODEL" --llama-port "$PAIR_LLAMA_PORT"; if [ -n "$PAIR_LLAMA_RPC" ]; then set -- "$@" --llama-rpc "$PAIR_LLAMA_RPC"; fi; fi' 'exec "$@"' > /opt/nvpair/fabric/run-worker
 chmod 0755 /opt/nvpair/fabric/run-worker
 
 printf '%s\n' '[Unit]' 'Description=PAIR distributed compute worker' 'After=network-online.target' 'Wants=network-online.target' '' '[Service]' 'Type=simple' 'ExecStart=/opt/nvpair/fabric/run-worker' 'Restart=always' 'RestartSec=3' 'NoNewPrivileges=true' "ProtectSystem=${PAIR_PROTECT_SYSTEM}" 'ReadWritePaths=/var/lib/nvpair /tmp' '' '[Install]' 'WantedBy=multi-user.target' > /etc/systemd/system/nvpair-fabric-worker.service
