@@ -62,6 +62,7 @@ type PageSpec struct {
 	Bytes  uint64 `json:"bytes"`
 	DType  string `json:"dtype,omitempty"`
 	Layout string `json:"layout,omitempty"`
+	Digest string `json:"digest,omitempty"`
 }
 
 type LogicalDevicePlanRequest struct {
@@ -72,6 +73,10 @@ type LogicalDevicePlanRequest struct {
 	Providers     []Provider    `json:"providers,omitempty"`
 	WorkerGoal    uint32        `json:"workerGoal"`
 	Pages         []PageSpec    `json:"pages"`
+}
+
+type LogicalDeviceCommitRequest struct {
+	LogicalDeviceRequest
 }
 
 func (r LogicalDeviceRequest) ValidateForEpoch(current uint64) error {

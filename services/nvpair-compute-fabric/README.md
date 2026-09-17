@@ -208,6 +208,10 @@ destination digest. The coordinator verifies the digest before publishing the
 new owner; this endpoint carries control metadata and never accepts a raw
 provider pointer.
 
+`fabric:logical-device-commit` publishes a plan as `running` only when every
+primary page has a verified digest for the current epoch. The request is
+idempotent by `requestId`; stale epochs are rejected.
+
 The binary page channel is the authenticated `POST /v1/fabric/logical-page`
 endpoint. The sender supplies `X-PAIR-Page-ID`, `X-PAIR-Page-Bytes`, and
 `X-PAIR-Page-Digest` headers with an `application/octet-stream` body. The peer

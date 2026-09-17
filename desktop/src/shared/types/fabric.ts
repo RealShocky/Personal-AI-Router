@@ -127,6 +127,7 @@ export interface FabricPageSpec {
     bytes: number
     dtype?: string
     layout?: string
+    digest?: string
 }
 
 export interface FabricLogicalDeviceRequest {
@@ -172,6 +173,11 @@ export interface FabricTransferRequest extends FabricLogicalDeviceRequest {
     targetWorkerId: string
     targetTierId: string
     expectedDigest: string
+}
+
+export interface FabricLogicalDeviceCommitRequest extends FabricLogicalDeviceRequest {
+    planId: string
+    epoch: number
 }
 
 export interface FabricTransferStatus {

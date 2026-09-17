@@ -218,3 +218,39 @@ func TestLogicalDeviceManagerRecoversDegradedPlanWithNewEpoch(t *testing.T) {
 		t.Fatalf("recovery status = %#v, %v", status, ok)
 	}
 }
+
+func TestLogicalDeviceManagerCommitsOnlyVerifiedPages(t *testing.T) {
+	workers := NewManager(time.Minute)
+	workers.AcceptHeartbeat(fabricwire.Heartbeat{WorkerID: "cpu-a", NodeID: "host-a", Epoch: 1, State: fabricwire.WorkerReady, Runtime: "pair", Backends: []string{"cpu"}, MemoryFree: 8 << 30}, time.Now())
+	logical := NewLogicalDeviceManager(workers)
+	pageDigestValue := pageDigest([]byte("verified"))
+	plan, err := logical.Plan(fabricwire.LogicalDevicePlanRequest{
+		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "commit-plan"},
+		Runtime: "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
+		Providers: []fabricwire.Provider{fabricwire.ProviderCPU}, WorkerGoal: 1,
+		Pages: []fabricwire.PageSpec{{PageID: "page-1", Bytes: 8, Digest: pageDigestValue}},
+	})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if _, err := logical.Commit(fabricwire.LogicalDeviceCommitRequest{LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "commit-1", PlanID: plan.PlanID, Epoch: plan.Epoch}}); err != nil {
+		t.Fatalf("Commit() verified page error = %v", err)
+	}
+	status, ok := logical.Status(plan.PlanID)
+	if !ok || status.State != fabricwire.LogicalDeviceRunning {
+		t.Fatalf("committed status = %#v, %v", status, ok)
+	}
+
+	unverified, err := logical.Plan(fabricwire.LogicalDevicePlanRequest{
+		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "unverified-plan"},
+		Runtime: "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
+		Providers: []fabricwire.Provider{fabricwire.ProviderCPU}, WorkerGoal: 1,
+		Pages: []fabricwire.PageSpec{{PageID: "page-2", Bytes: 8}},
+	})
+	if err != nil {
+		t.Fatalf("unverified Plan() error = %v", err)
+	}
+	if _, err := logical.Commit(fabricwire.LogicalDeviceCommitRequest{LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "commit-2", PlanID: unverified.PlanID, Epoch: unverified.Epoch}}); err == nil {
+		t.Fatal("Commit() accepted an unverified page")
+	}
+}

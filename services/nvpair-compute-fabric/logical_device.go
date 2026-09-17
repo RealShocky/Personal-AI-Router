@@ -23,6 +23,7 @@ type LogicalDeviceManager struct {
 	transfers  map[string]fabricwire.TransferStatus
 	pageStore  *PageStore
 	pageClient *http.Client
+	commits    map[string]fabricwire.LogicalDeviceStatus
 }
 
 func (m *LogicalDeviceManager) SetPageTransferRuntime(store *PageStore, client *http.Client) {
@@ -49,6 +50,7 @@ func NewLogicalDeviceManager(workers *Manager) *LogicalDeviceManager {
 		requests:  make(map[string]fabricwire.LogicalDevicePlan),
 		states:    make(map[string]fabricwire.LogicalDeviceState),
 		transfers: make(map[string]fabricwire.TransferStatus),
+		commits:   make(map[string]fabricwire.LogicalDeviceStatus),
 	}
 }
 
@@ -84,6 +86,10 @@ func (m *LogicalDeviceManager) Describe() fabricwire.LogicalDeviceDescribe {
 func (m *LogicalDeviceManager) Status(planID string) (fabricwire.LogicalDeviceStatus, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	return m.statusLocked(planID)
+}
+
+func (m *LogicalDeviceManager) statusLocked(planID string) (fabricwire.LogicalDeviceStatus, bool) {
 	plan, ok := m.plans[planID]
 	state := m.states[planID]
 	if !ok {
@@ -104,6 +110,30 @@ func (m *LogicalDeviceManager) Status(planID string) (fabricwire.LogicalDeviceSt
 	}
 	sort.Strings(transferIDs)
 	return fabricwire.LogicalDeviceStatus{PlanID: plan.PlanID, Epoch: plan.Epoch, State: state, Workers: workers, Pages: append([]fabricwire.PagePlacement(nil), plan.Pages...), TransferIDs: transferIDs, UpdatedAtMS: time.Now().UnixMilli()}, true
+}
+
+func (m *LogicalDeviceManager) Commit(request fabricwire.LogicalDeviceCommitRequest) (fabricwire.LogicalDeviceStatus, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if cached, ok := m.commits[request.RequestID]; ok {
+		return cached, nil
+	}
+	plan, ok := m.plans[request.PlanID]
+	if !ok {
+		return fabricwire.LogicalDeviceStatus{}, fmt.Errorf("logical device plan %q not found", request.PlanID)
+	}
+	if err := request.ValidateForEpoch(plan.Epoch); err != nil {
+		return fabricwire.LogicalDeviceStatus{}, err
+	}
+	for _, page := range plan.Pages {
+		if page.Digest == "" {
+			return fabricwire.LogicalDeviceStatus{}, fmt.Errorf("page %q is not verified", page.PageID)
+		}
+	}
+	m.states[plan.PlanID] = fabricwire.LogicalDeviceRunning
+	status, _ := m.statusLocked(plan.PlanID)
+	m.commits[request.RequestID] = status
+	return status, nil
 }
 
 func (m *LogicalDeviceManager) Reconcile(_ ...time.Time) {
@@ -367,7 +397,7 @@ func (m *LogicalDeviceManager) Plan(request fabricwire.LogicalDevicePlanRequest)
 		}
 		plan.Pages = append(plan.Pages, fabricwire.PagePlacement{
 			PageID: page.PageID, WorkerID: worker.Heartbeat.WorkerID, TierID: tierID,
-			Bytes: page.Bytes, DType: page.DType, Layout: page.Layout, Epoch: epoch,
+			Bytes: page.Bytes, DType: page.DType, Layout: page.Layout, Digest: page.Digest, Epoch: epoch,
 		})
 	}
 	if err := plan.Validate(); err != nil {

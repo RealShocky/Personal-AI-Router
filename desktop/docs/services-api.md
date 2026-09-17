@@ -118,6 +118,7 @@
 | `fabric:job-status` | request (we call) | ✅ yes |
 | `fabric:job-stop` | request (we call) | ✅ yes |
 | `fabric:job-submit` | request (we call) | ⚠️ not called |
+| `fabric:logical-device-commit` | request (we call) | ✅ yes |
 | `fabric:logical-device-describe` | request (we call) | ✅ yes |
 | `fabric:logical-device-plan` | request (we call) | ✅ yes |
 | `fabric:logical-device-recover` | request (we call) | ✅ yes |

@@ -1172,6 +1172,22 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		_ = codec.Respond(msg.ID, status)
+	case "fabric:logical-device-commit":
+		if logicalDevice == nil {
+			_ = codec.RespondError(msg.ID, -32001, "logical device manager unavailable")
+			return
+		}
+		var request fabricwire.LogicalDeviceCommitRequest
+		if err := json.Unmarshal(msg.Params, &request); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid logical device commit request")
+			return
+		}
+		status, err := logicalDevice.Commit(request)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32001, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, status)
 	case "fabric:logical-device-transfer":
 		if logicalDevice == nil {
 			_ = codec.RespondError(msg.ID, -32001, "logical device manager unavailable")

@@ -372,7 +372,8 @@ function fabricLogicalDevicePlanRequestJson(request: FabricLogicalDevicePlanRequ
             pageId: page.pageId,
             bytes: page.bytes,
             ...(page.dtype === undefined ? {} : { dtype: page.dtype }),
-            ...(page.layout === undefined ? {} : { layout: page.layout })
+            ...(page.layout === undefined ? {} : { layout: page.layout }),
+            ...(page.digest === undefined ? {} : { digest: page.digest })
         }))
     }
 }
@@ -1305,6 +1306,17 @@ const EMPTY_SERVICE_BRIDGE_HANDLERS: BridgeHandlerMap = {
     'fabric:logical-device-recover': async payload => {
         if (!payload) throw new Error('logical device recovery request is required')
         return parseFabricLogicalDevicePlan(await callCluster('fabric:logical-device-recover', { planId: payload.planId, workers: payload.workers }))
+    },
+    'fabric:logical-device-commit': async payload => {
+        if (!payload) throw new Error('logical device commit request is required')
+        const request: JsonObject = {
+            protocolVersion: payload.protocolVersion,
+            requestId: payload.requestId,
+            planId: payload.planId,
+            epoch: payload.epoch,
+            ...(payload.deadlineUnixMs === undefined ? {} : { deadlineUnixMs: payload.deadlineUnixMs })
+        }
+        return parseFabricLogicalDeviceStatus(await callCluster('fabric:logical-device-commit', request))
     },
     'fabric:plan': async payload => {
         if (!payload) throw new Error('fabric group request is required')
