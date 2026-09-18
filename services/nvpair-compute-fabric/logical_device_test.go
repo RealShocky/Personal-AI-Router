@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -50,6 +51,52 @@ func TestLogicalDeviceManagerExecutesCPUPageCopy(t *testing.T) {
 	}
 }
 
+func TestLogicalDeviceManagerSeedsPlannedPageForExecution(t *testing.T) {
+	workers := NewManager(time.Minute)
+	workers.AcceptHeartbeat(fabricwire.Heartbeat{
+		WorkerID: "cpu-a", NodeID: "host-a", Epoch: 1, State: fabricwire.WorkerReady,
+		Runtime: "pair", Backends: []string{"cpu"}, MemoryFree: 8 << 30,
+	}, time.Now())
+	store, err := NewPageStore(t.TempDir(), 1<<20)
+	if err != nil {
+		t.Fatalf("NewPageStore() error = %v", err)
+	}
+	logical := NewLogicalDeviceManager(workers)
+	logical.SetPageTransferRuntime(store, nil)
+	plan, err := logical.Plan(fabricwire.LogicalDevicePlanRequest{
+		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "seed-plan"},
+		Runtime:              "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline,
+		Providers: []fabricwire.Provider{fabricwire.ProviderCPU}, WorkerGoal: 1,
+		Pages: []fabricwire.PageSpec{{PageID: "seed-page", Bytes: 8}},
+	})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	metadata, err := logical.SeedPage(context.Background(), fabricwire.LogicalDeviceSeedRequest{
+		LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "seed-page-request", PlanID: plan.PlanID, Epoch: plan.Epoch},
+		PageID:               "seed-page", Pattern: "ab",
+	})
+	if err != nil {
+		t.Fatalf("SeedPage() error = %v", err)
+	}
+	reader, _, err := store.Open(context.Background(), "seed-page")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if string(data) != "abababab" || metadata.Bytes != 8 || metadata.Digest != pageDigest(data) {
+		t.Fatalf("SeedPage() = %#v and data %q, want verified repeated pattern", metadata, data)
+	}
+	status, ok := logical.Status(plan.PlanID)
+	if !ok || len(status.Pages) != 1 || status.Pages[0].Digest != metadata.Digest {
+		t.Fatalf("Status() = %#v/%v, want seeded page digest", status, ok)
+	}
+}
+
 func TestMetalProviderRequiresConfiguredHelper(t *testing.T) {
 	provider := NewMetalProvider("", "0")
 	_, err := provider.Execute(context.Background(), nil, LogicalExecuteRequest{Operation: LogicalOperationCopy})
@@ -86,6 +133,9 @@ func TestLogicalDeviceManagerPlansCPUPageOnReadyWorker(t *testing.T) {
 	}
 	if len(plan.Pages) != 1 || plan.Pages[0].WorkerID != "cpu-a" || plan.Pages[0].Epoch == 0 {
 		t.Fatalf("Plan() = %#v, want one page on cpu-a with an epoch", plan)
+	}
+	if plan.Epoch > 1<<53 {
+		t.Fatalf("Plan() epoch = %d, want an epoch exactly representable by desktop JSON numbers", plan.Epoch)
 	}
 }
 

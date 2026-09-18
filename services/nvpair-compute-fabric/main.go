@@ -1270,6 +1270,22 @@ func handleMessage(codec *Codec, mgr *Manager, jobs *JobStore, executions *Execu
 			return
 		}
 		_ = codec.Respond(msg.ID, status)
+	case "fabric:logical-device-seed":
+		if logicalDevice == nil {
+			_ = codec.RespondError(msg.ID, -32001, "logical device manager unavailable")
+			return
+		}
+		var request fabricwire.LogicalDeviceSeedRequest
+		if err := json.Unmarshal(msg.Params, &request); err != nil {
+			_ = codec.RespondError(msg.ID, -32602, "invalid logical device page seed request")
+			return
+		}
+		metadata, err := logicalDevice.SeedPage(context.Background(), request)
+		if err != nil {
+			_ = codec.RespondError(msg.ID, -32001, err.Error())
+			return
+		}
+		_ = codec.Respond(msg.ID, metadata)
 	case "fabric:logical-device-execute":
 		if logicalDevice == nil {
 			_ = codec.RespondError(msg.ID, -32001, "logical device manager unavailable")

@@ -4,7 +4,7 @@
 import type { WsInvokeChannel, WsInvokeRequest, WsInvokeResponse } from '@/shared/types/ws-channels'
 import type { ClusterInitialSnapshot } from '@/shared/types/bootstrap'
 import type { ClusterNode, ClusterNodeIdentity, Invite } from '@/shared/types/cluster'
-import type { FabricStatus, FabricWorker, FabricJob, FabricExecution, FabricCapacity, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingRequest, FabricTrainingNode, FabricInferenceRequest, FabricGroupPlan, FabricLogicalDeviceDescribe, FabricProvider, FabricProviderCapability, FabricMemoryTier, FabricLogicalDevicePlan, FabricLogicalDeviceStatus, FabricTransferStatus, FabricLogicalDevicePlanRequest, FabricTransferRequest, FabricLogicalExecuteResult } from '@/shared/types/fabric'
+import type { FabricStatus, FabricWorker, FabricJob, FabricExecution, FabricCapacity, FabricTrainingExecution, FabricTrainingGroupStatus, FabricCheckpoint, FabricTrainingRequest, FabricTrainingNode, FabricInferenceRequest, FabricGroupPlan, FabricLogicalDeviceDescribe, FabricProvider, FabricProviderCapability, FabricMemoryTier, FabricLogicalDevicePlan, FabricLogicalDeviceStatus, FabricTransferStatus, FabricLogicalDevicePlanRequest, FabricTransferRequest, FabricLogicalExecuteResult, FabricLogicalDeviceSeedRequest } from '@/shared/types/fabric'
 import type { EngineType } from '@/shared/types/engines'
 import type { ServiceError } from '@/shared/types/errors'
 import {
@@ -274,6 +274,11 @@ export function parseFabricLogicalDeviceStatus(value: JsonValue | undefined): Fa
     }
 }
 
+function parseFabricLogicalPageMetadata(value: JsonValue | undefined): { pageId: string; bytes: number; digest: string } {
+    const obj = objectValue(value)
+    return { pageId: stringValue(obj?.pageId), bytes: numberValue(obj?.bytes), digest: stringValue(obj?.digest) }
+}
+
 export function parseFabricLogicalExecuteResult(value: JsonValue | undefined): FabricLogicalExecuteResult {
     const obj = objectValue(value)
     const output = objectValue(obj?.output)
@@ -417,6 +422,18 @@ function fabricLogicalExecuteRequestJson(request: WsInvokeRequest<'fabric:logica
         operation: request.operation,
         inputPageId: request.inputPageId,
         outputPageId: request.outputPageId
+    }
+}
+
+function fabricLogicalDeviceSeedRequestJson(request: FabricLogicalDeviceSeedRequest): JsonObject {
+    return {
+        protocolVersion: request.protocolVersion,
+        requestId: request.requestId,
+        planId: request.planId,
+        epoch: request.epoch,
+        ...(request.deadlineUnixMs === undefined ? {} : { deadlineUnixMs: request.deadlineUnixMs }),
+        pageId: request.pageId,
+        pattern: request.pattern
     }
 }
 
@@ -1345,6 +1362,10 @@ const EMPTY_SERVICE_BRIDGE_HANDLERS: BridgeHandlerMap = {
             ...(payload.deadlineUnixMs === undefined ? {} : { deadlineUnixMs: payload.deadlineUnixMs })
         }
         return parseFabricLogicalDeviceStatus(await callCluster('fabric:logical-device-commit', request))
+    },
+    'fabric:logical-device-seed': async payload => {
+        if (!payload) throw new Error('logical device page seed request is required')
+        return parseFabricLogicalPageMetadata(await callCluster('fabric:logical-device-seed', fabricLogicalDeviceSeedRequestJson(payload)))
     },
     'fabric:logical-device-execute': async payload => {
         if (!payload) throw new Error('logical device execute request is required')

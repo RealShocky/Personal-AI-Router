@@ -154,6 +154,16 @@ coordinator never sends a remote pointer to CUDA and never reports remote
 memory as local VRAM. If the endpoint is unavailable, the request fails rather
 than silently running on an unintended device.
 
+The Overview card now includes **Run CUDA page test** after a plan preview. It
+uses `fabric:logical-device-seed` to create a bounded deterministic page (up to
+16 MiB),
+commits the verified digest, and calls `fabric:logical-device-execute` with the
+selected plan epoch. The result displays the provider, output page, byte count,
+and digest. This gives the operator a repeatable end-to-end check of page
+placement, authenticated transfer, local CUDA staging, and verified return
+metadata. It is a fabric transport/provider gate—not an LLM benchmark and not
+a contiguous pooled-VRAM address space.
+
 Sources: [CUDA multi-GPU programming](https://docs.nvidia.com/cuda/cuda-programming-guide/03-advanced/multi-gpu-systems.html),
 [CUDA virtual memory management](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/virtual-memory-management.html),
 [NVSHMEM](https://docs.nvidia.com/nvshmem/api/latest/introduction.html),

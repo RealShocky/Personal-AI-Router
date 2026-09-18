@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -27,11 +28,73 @@ type LogicalDeviceManager struct {
 	providers  map[fabricwire.Provider]LogicalProvider
 }
 
+const logicalSeedMaxBytes = 16 << 20
+
 func (m *LogicalDeviceManager) SetPageTransferRuntime(store *PageStore, client *http.Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.pageStore = store
 	m.pageClient = client
+}
+
+func (m *LogicalDeviceManager) SeedPage(ctx context.Context, request fabricwire.LogicalDeviceSeedRequest) (fabricwire.LogicalPageMetadata, error) {
+	if request.PageID == "" || len([]byte(request.Pattern)) == 0 || len([]byte(request.Pattern)) > 64 {
+		return fabricwire.LogicalPageMetadata{}, fmt.Errorf("logical page seed requires a pattern between 1 and 64 bytes")
+	}
+	m.mu.RLock()
+	plan, ok := m.plans[request.PlanID]
+	store := m.pageStore
+	m.mu.RUnlock()
+	if !ok {
+		return fabricwire.LogicalPageMetadata{}, fmt.Errorf("logical device plan %q not found", request.PlanID)
+	}
+	if err := request.ValidateForEpoch(plan.Epoch); err != nil {
+		return fabricwire.LogicalPageMetadata{}, err
+	}
+	if store == nil {
+		return fabricwire.LogicalPageMetadata{}, fmt.Errorf("logical page seed requires a coordinator page store")
+	}
+	var page fabricwire.PagePlacement
+	found := false
+	for _, candidate := range plan.Pages {
+		if candidate.PageID == request.PageID && !candidate.Replica {
+			page = candidate
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fabricwire.LogicalPageMetadata{}, fmt.Errorf("logical page %q is not in the plan", request.PageID)
+	}
+	if page.Bytes > logicalSeedMaxBytes {
+		return fabricwire.LogicalPageMetadata{}, fmt.Errorf("logical page seed is limited to %d bytes", logicalSeedMaxBytes)
+	}
+	data := make([]byte, page.Bytes)
+	pattern := []byte(request.Pattern)
+	for offset := 0; offset < len(data); offset += len(pattern) {
+		copy(data[offset:], pattern)
+	}
+	digest := pageDigest(data)
+	metadata, err := store.Put(ctx, request.PageID, page.Bytes, digest, bytes.NewReader(data))
+	if err != nil {
+		return fabricwire.LogicalPageMetadata{}, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	current, ok := m.plans[request.PlanID]
+	if !ok || current.Epoch != plan.Epoch {
+		return fabricwire.LogicalPageMetadata{}, fmt.Errorf("logical device plan changed while seeding page")
+	}
+	for index, candidate := range current.Pages {
+		if candidate.PageID == request.PageID && !candidate.Replica {
+			candidate.Digest = digest
+			current.Pages[index] = candidate
+			break
+		}
+	}
+	m.plans[request.PlanID] = current
+	m.requests[request.PlanID] = current
+	return fabricwire.LogicalPageMetadata{PageID: metadata.PageID, Bytes: metadata.Bytes, Digest: metadata.Digest}, nil
 }
 
 func (m *LogicalDeviceManager) SetProvider(provider fabricwire.Provider, implementation LogicalProvider) {
@@ -265,7 +328,10 @@ func (m *LogicalDeviceManager) Recover(planID string, replacementWorkerIDs []str
 		}
 		replacements = append(replacements, worker)
 	}
-	epoch := uint64(time.Now().UnixNano())
+	// Epochs cross the typed Electron bridge as JSON numbers. Milliseconds are
+	// unique for control-plane plan transitions while remaining exactly
+	// representable by JavaScript's safe integer range.
+	epoch := uint64(time.Now().UnixMilli())
 	if epoch <= plan.Epoch {
 		epoch = plan.Epoch + 1
 	}
@@ -450,7 +516,7 @@ func (m *LogicalDeviceManager) Plan(request fabricwire.LogicalDevicePlanRequest)
 		return candidates[i].Heartbeat.WorkerID < candidates[j].Heartbeat.WorkerID
 	})
 
-	epoch := uint64(time.Now().UnixNano())
+	epoch := uint64(time.Now().UnixMilli())
 	if epoch == 0 {
 		epoch = 1
 	}

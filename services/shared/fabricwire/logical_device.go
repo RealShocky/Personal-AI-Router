@@ -87,6 +87,12 @@ type LogicalExecuteRequest struct {
 	OutputPageID string   `json:"outputPageId"`
 }
 
+type LogicalDeviceSeedRequest struct {
+	LogicalDeviceRequest
+	PageID  string `json:"pageId"`
+	Pattern string `json:"pattern"`
+}
+
 type LogicalExecuteResult struct {
 	Provider Provider            `json:"provider"`
 	Output   LogicalPageMetadata `json:"output"`

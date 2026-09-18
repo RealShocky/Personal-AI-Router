@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react'
 import { Button, Flex, FormField, Stack, Text, TextInput } from '@nvidia/foundations-react-core'
-import type { FabricLogicalDeviceDescribe, FabricLogicalDevicePlan, FabricLogicalDeviceStatus, FabricStatus } from '@/shared/types/fabric'
+import type { FabricLogicalDeviceDescribe, FabricLogicalDevicePlan, FabricLogicalDeviceStatus, FabricLogicalExecuteResult, FabricStatus } from '@/shared/types/fabric'
 
 const EMPTY_STATUS: FabricStatus = { workers: [], capacity: { workers: 0, memoryFree: 0, gpuVramTotal: 0, gpuVramFree: 0, gpuCount: 0 }, jobs: [], executions: [] }
 const EMPTY_DESCRIBE: FabricLogicalDeviceDescribe = { protocolVersion: 1, workerId: 'coordinator', providers: [] }
@@ -21,6 +21,8 @@ export default function FabricLogicalDeviceCard() {
     const [workerGoal, setWorkerGoal] = useState('2')
     const [pageBytes, setPageBytes] = useState(String(1 << 20))
     const [modelDigest, setModelDigest] = useState('sha256:logical-device-preview')
+    const [seedPattern, setSeedPattern] = useState('PAIR')
+    const [execution, setExecution] = useState<FabricLogicalExecuteResult | null>(null)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
 
@@ -77,8 +79,48 @@ export default function FabricLogicalDeviceCard() {
             })
             setPlan(nextPlan)
             setPlanStatus(await window.pairApi.fabric.getLogicalDeviceStatus(nextPlan.planId))
+            setExecution(null)
         } catch (cause) {
             setError(cause instanceof Error ? cause.message : 'Logical-device planning failed')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const runPageTest = async () => {
+        if (!plan || !plan.pages[0]) return
+        setBusy(true)
+        setError('')
+        try {
+            const page = plan.pages[0]
+            await window.pairApi.fabric.seedLogicalDevicePage({
+                protocolVersion: 1,
+                requestId: `ui-logical-seed-${Date.now()}`,
+                planId: plan.planId,
+                epoch: plan.epoch,
+                pageId: page.pageId,
+                pattern: seedPattern
+            })
+            const committed = await window.pairApi.fabric.commitLogicalDevice({
+                protocolVersion: 1,
+                requestId: `ui-logical-commit-${Date.now()}`,
+                planId: plan.planId,
+                epoch: plan.epoch
+            })
+            setPlanStatus(committed)
+            const result = await window.pairApi.fabric.executeLogicalDevice({
+                protocolVersion: 1,
+                requestId: `ui-logical-execute-${Date.now()}`,
+                planId: plan.planId,
+                epoch: plan.epoch,
+                provider: 'cuda',
+                operation: 'copy',
+                inputPageId: page.pageId,
+                outputPageId: `${page.pageId}-output`
+            })
+            setExecution(result)
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : 'Logical page execution failed')
         } finally {
             setBusy(false)
         }
@@ -100,6 +142,7 @@ export default function FabricLogicalDeviceCard() {
                     <FormField slotLabel="Model digest"><TextInput value={modelDigest} onValueChange={setModelDigest} disabled={busy} size="small" /></FormField>
                     <FormField slotLabel="CUDA workers"><TextInput value={workerGoal} onValueChange={setWorkerGoal} disabled={busy} size="small" /></FormField>
                     <FormField slotLabel="Page bytes"><TextInput value={pageBytes} onValueChange={setPageBytes} disabled={busy} size="small" /></FormField>
+                    <FormField slotLabel="Self-test pattern"><TextInput value={seedPattern} onValueChange={setSeedPattern} disabled={busy} size="small" /></FormField>
                 </Flex>
                 <Flex gap="2" align="center" wrap="wrap">
                     <Button kind="primary" color="brand" size="small" onClick={() => void preview()} disabled={busy || readyCuda < Number(workerGoal)}>
@@ -108,10 +151,16 @@ export default function FabricLogicalDeviceCard() {
                     <Text kind="body/regular/sm" className="text-subtle-color">
                         {cudaProviders.length} CUDA provider{cudaProviders.length === 1 ? '' : 's'} advertised
                     </Text>
+                    <Button kind="secondary" size="small" onClick={() => void runPageTest()} disabled={busy || plan === null || plan.pages.length === 0}>
+                        Run CUDA page test
+                    </Button>
                 </Flex>
                 {plan && <Text kind="body/regular/sm" className="text-subtle-color">
                     Plan {plan.planId}: {plan.workers.map(worker => worker.workerId).join(', ')} · page on {plan.pages[0]?.workerId} ({plan.pages[0]?.tierId}) · {formatBytes(plan.pages[0]?.bytes ?? 0)}
                     {planStatus ? ` · ${planStatus.state}` : ''}
+                </Text>}
+                {execution && <Text kind="body/regular/sm" className="text-subtle-color">
+                    {execution.provider} execution verified · {execution.output.pageId} · {formatBytes(execution.output.bytes)} · {execution.output.digest}
                 </Text>}
                 {error && <Text kind="body/regular/sm" className="text-error-color">{error}</Text>}
             </Stack>

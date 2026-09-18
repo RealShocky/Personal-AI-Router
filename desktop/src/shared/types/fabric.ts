@@ -187,6 +187,13 @@ export interface FabricLogicalExecuteRequest extends FabricLogicalDeviceRequest 
     outputPageId: string
 }
 
+export interface FabricLogicalDeviceSeedRequest extends FabricLogicalDeviceRequest {
+    planId: string
+    epoch: number
+    pageId: string
+    pattern: string
+}
+
 export interface FabricLogicalExecuteResult {
     provider: FabricProvider
     output: { pageId: string; bytes: number; digest: string }

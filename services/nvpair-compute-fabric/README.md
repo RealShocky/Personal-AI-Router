@@ -234,6 +234,13 @@ The same operation is callable through `fabric:logical-device-execute` with a
 plan ID and epoch, so the desktop API has one typed entry point for future CUDA
 and Metal providers.
 
+The coordinator also exposes `fabric:logical-device-seed` for a bounded
+operator self-test. It repeats a 1-64 byte pattern to exactly fill a planned
+page (up to 16 MiB), stores the page in the authenticated coordinator page store, records the
+verified digest in the current plan, and returns page metadata. This makes the
+logical-page execution gate testable from the desktop; it does not manufacture
+model weights or claim tensor-parallel LLM execution.
+
 When a plan assigns the input page to a paired worker with an advertised HTTPS
 endpoint, execution is routed through that worker. PAIR transfers the verified
 input page, invokes the worker's local provider at

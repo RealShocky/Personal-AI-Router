@@ -150,6 +150,13 @@ it never treats unrelated ready workers as part of the job.
 
 The coordinator JSON-RPC surface includes `fabric:job-start`, `fabric:job-stop`, and `fabric:job-status`; job start derives authenticated loopback relays from worker heartbeat endpoints and launches the configured llama.cpp server. The worker must advertise its fabric HTTPS endpoint with `--advertise-url`.
 
+The logical-device panel also provides a bounded page self-test after plan
+preview. It seeds a deterministic page through `fabric:logical-device-seed`,
+commits the digest, and invokes `fabric:logical-device-execute` on the selected
+CUDA worker. A matching output digest proves the authenticated page path and
+local provider staging; it must not be interpreted as proof of a pooled VRAM
+device or production-model execution.
+
 `fabric:get-status` also returns a `capacity` object. Its values are the sum of
 currently `ready` workers’ free host memory, reported GPU count, and reported
 free/total NVIDIA VRAM. This is PAIR’s logical capacity view for scheduling;
