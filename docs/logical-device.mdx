@@ -99,7 +99,9 @@ but ownership is published only after peer metadata verifies the bytes.
 The binary data channel is implemented and tested, and the CPU page-copy
 adapter remains the portable baseline. A queued transfer still means
 control-plane state until the configured source and destination stores
-complete the authenticated byte transfer. Aggregate capacity in the dashboard
+complete the authenticated byte transfer. The desktop dashboard presents this
+as the PAIR compute pool: ready workers, schedulable host RAM, aggregate GPU
+capacity, provider counts, active jobs, and recovery state. Aggregate capacity
 means schedulable fleet capacity, not a contiguous memory pool. The adapter
 creates a verified output page without exposing a pointer. CUDA and Metal
 execution remain provider-specific adapters. CUDA is verified when the

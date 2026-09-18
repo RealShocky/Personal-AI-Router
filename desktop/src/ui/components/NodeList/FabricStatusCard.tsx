@@ -69,7 +69,7 @@ export default function FabricStatusCard() {
                     <div className="fabric-pool-metric fabric-pool-metric-primary">
                         <Text kind="body/regular/sm" className="text-subtle-color">PAIR compute pool</Text>
                         <Text kind="body/semibold/lg">{pool.readyWorkers} ready worker{pool.readyWorkers === 1 ? '' : 's'}</Text>
-                        <Text kind="body/regular/sm" className="text-subtle-color">{pool.pairedWorkers} paired · {pool.activeJobs + pool.activeExecutions} active workload{pool.activeJobs + pool.activeExecutions === 1 ? '' : 's'}</Text>
+                        <Text kind="body/regular/sm" className="text-subtle-color">{pool.pairedWorkers} paired · {pool.activeJobs} active job{pool.activeJobs === 1 ? '' : 's'} · {pool.activeExecutions} execution{pool.activeExecutions === 1 ? '' : 's'}</Text>
                     </div>
                     <div className="fabric-pool-metric">
                         <Text kind="body/regular/sm" className="text-subtle-color">Schedulable host RAM</Text>
