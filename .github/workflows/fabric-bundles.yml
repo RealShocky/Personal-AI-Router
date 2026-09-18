@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+name: Build PAIR fabric bundles
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'fabric-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            goarch: amd64
+            package_arch: x86_64
+          - arch: arm64
+            goarch: arm64
+            package_arch: aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.3'
+      - name: Build fabric and pairing manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(jq -r '.components["nvpair-compute-fabric"]' services/versions.json)"
+          mkdir -p "$RUNNER_TEMP/fabric"
+          (cd services/nvpair-compute-fabric && GOOS=linux GOARCH=${{ matrix.goarch }} go build -trimpath -ldflags "-X main.Version=$version" -o "$RUNNER_TEMP/fabric/nvpair-compute-fabric")
+          (cd services/nvpair-cluster-manager && GOOS=linux GOARCH=${{ matrix.goarch }} go build -trimpath -ldflags "-X main.Version=$version" -o "$RUNNER_TEMP/fabric/nvpair-cluster-manager")
+      - name: Package bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dist"
+          PAIR_FABRIC_BINARY="$RUNNER_TEMP/fabric/nvpair-compute-fabric" \
+          PAIR_CLUSTER_MANAGER_BINARY="$RUNNER_TEMP/fabric/nvpair-cluster-manager" \
+          PAIR_FABRIC_ARCH="${{ matrix.package_arch }}" \
+            bash scripts/package-fabric-linux.sh "$RUNNER_TEMP/dist"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fabric-linux-${{ matrix.arch }}
+          path: ${{ runner.temp }}/dist/fabric-linux-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.arch }}
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            goarch: arm64
+          - arch: x64
+            goarch: amd64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.3'
+      - name: Build fabric and pairing manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(jq -r '.components["nvpair-compute-fabric"]' services/versions.json)"
+          mkdir -p "$RUNNER_TEMP/fabric"
+          (cd services/nvpair-compute-fabric && GOOS=darwin GOARCH=${{ matrix.goarch }} go build -trimpath -ldflags "-X main.Version=$version" -o "$RUNNER_TEMP/fabric/nvpair-compute-fabric")
+          (cd services/nvpair-cluster-manager && GOOS=darwin GOARCH=${{ matrix.goarch }} go build -trimpath -ldflags "-X main.Version=$version" -o "$RUNNER_TEMP/fabric/nvpair-cluster-manager")
+      - name: Package bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dist"
+          PAIR_FABRIC_BINARY="$RUNNER_TEMP/fabric/nvpair-compute-fabric" \
+          PAIR_CLUSTER_MANAGER_BINARY="$RUNNER_TEMP/fabric/nvpair-cluster-manager" \
+            bash scripts/package-fabric-macos.sh "$RUNNER_TEMP/dist"
+          mv "$RUNNER_TEMP/dist/fabric-macos-$(uname -m).zip" "$RUNNER_TEMP/dist/fabric-macos-${{ matrix.arch }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fabric-macos-${{ matrix.arch }}
+          path: ${{ runner.temp }}/dist/fabric-macos-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.3'
+      - name: Build fabric worker
+        shell: pwsh
+        run: |
+          $version = (Get-Content services/versions.json | ConvertFrom-Json).components.'nvpair-compute-fabric'
+          $output = Join-Path $env:RUNNER_TEMP 'nvpair-compute-fabric.exe'
+          Push-Location services/nvpair-compute-fabric
+          try { go build -trimpath -ldflags "-X main.Version=$version" -o $output . }
+          finally { Pop-Location }
+          "FABRIC_BINARY=$output" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Package bundle
+        shell: pwsh
+        run: .\scripts\package-fabric-windows.ps1 -Binary $env:FABRIC_BINARY -OutputDir $env:RUNNER_TEMP
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fabric-windows-x64
+          path: ${{ runner.temp }}/fabric-windows-x64.zip
+          if-no-files-found: error
