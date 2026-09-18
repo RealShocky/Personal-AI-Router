@@ -12,6 +12,7 @@ import NodeCardDetails from './NodeCardDetails'
 import { CONNECTIONS_WIDTH } from '@/ui/constants/app'
 import OfflineNode from './OfflineNode'
 import FabricStatusCard from './FabricStatusCard'
+import FabricLogicalDeviceCard from './FabricLogicalDeviceCard'
 import FabricTrainingCard from './FabricTrainingCard'
 import FabricInferenceCard from './FabricInferenceCard'
 
@@ -42,6 +43,7 @@ function NodeList() {
     return (
         <Stack className="grow min-w-0 h-full max-w-300">
             <FabricStatusCard />
+            <FabricLogicalDeviceCard />
             <FabricInferenceCard />
             <FabricTrainingCard />
             <OverlayScrollbarsComponent
