@@ -42,10 +42,6 @@ function NodeList() {
 
     return (
         <Stack className="grow min-w-0 h-full max-w-300">
-            <FabricStatusCard />
-            <FabricLogicalDeviceCard />
-            <FabricInferenceCard />
-            <FabricTrainingCard />
             <OverlayScrollbarsComponent
                 className="node-list-scroll-container"
                 style={{
@@ -56,6 +52,10 @@ function NodeList() {
                 defer
             >
                 <Stack className="min-w-0 min-h-full dir-ltr" gap="3" data-node-list-content>
+                    <FabricStatusCard />
+                    <FabricLogicalDeviceCard />
+                    <FabricInferenceCard />
+                    <FabricTrainingCard />
                     {online.map(node => (
                         <NodeCardDetails key={node.id} node={node} />
                     ))}

@@ -67,24 +67,32 @@ export default function FabricStatusCard() {
                 </Text>
                 <div className="fabric-pool-grid" data-fabric-pool-summary>
                     <div className="fabric-pool-metric fabric-pool-metric-primary">
-                        <Text kind="body/regular/sm" className="text-subtle-color">PAIR compute pool</Text>
-                        <Text kind="body/semibold/lg">{pool.readyWorkers} ready worker{pool.readyWorkers === 1 ? '' : 's'}</Text>
-                        <Text kind="body/regular/sm" className="text-subtle-color">{pool.pairedWorkers} paired · {pool.activeJobs} active job{pool.activeJobs === 1 ? '' : 's'} · {pool.activeExecutions} execution{pool.activeExecutions === 1 ? '' : 's'}</Text>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <Text kind="body/regular/sm" className="text-subtle-color">PAIR compute pool</Text>
+                            <Text kind="body/semibold/lg">{pool.readyWorkers} ready worker{pool.readyWorkers === 1 ? '' : 's'}</Text>
+                            <Text kind="body/regular/sm" className="text-subtle-color">{pool.pairedWorkers} paired · {pool.activeJobs} active job{pool.activeJobs === 1 ? '' : 's'} · {pool.activeExecutions} execution{pool.activeExecutions === 1 ? '' : 's'}</Text>
+                        </div>
                     </div>
                     <div className="fabric-pool-metric">
-                        <Text kind="body/regular/sm" className="text-subtle-color">Schedulable host RAM</Text>
-                        <Text kind="body/semibold/lg">{(pool.memoryFree / 1024 ** 3).toFixed(1)} GiB</Text>
-                        <Text kind="body/regular/sm" className="text-subtle-color">offload and cache tier</Text>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <Text kind="body/regular/sm" className="text-subtle-color">Schedulable host RAM</Text>
+                            <Text kind="body/semibold/lg">{(pool.memoryFree / 1024 ** 3).toFixed(1)} GiB</Text>
+                            <Text kind="body/regular/sm" className="text-subtle-color">offload and cache tier</Text>
+                        </div>
                     </div>
                     <div className="fabric-pool-metric">
-                        <Text kind="body/regular/sm" className="text-subtle-color">GPU capacity</Text>
-                        <Text kind="body/semibold/lg">{pool.gpuCount} GPU{pool.gpuCount === 1 ? '' : 's'}</Text>
-                        <Text kind="body/regular/sm" className="text-subtle-color">{pool.gpuVramTotal > 0 ? `${(pool.gpuVramFree / 1024 ** 3).toFixed(1)} / ${(pool.gpuVramTotal / 1024 ** 3).toFixed(1)} GiB VRAM free` : 'telemetry pending'}</Text>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <Text kind="body/regular/sm" className="text-subtle-color">GPU capacity</Text>
+                            <Text kind="body/semibold/lg">{pool.gpuCount} GPU{pool.gpuCount === 1 ? '' : 's'}</Text>
+                            <Text kind="body/regular/sm" className="text-subtle-color">{pool.gpuVramTotal > 0 ? `${(pool.gpuVramFree / 1024 ** 3).toFixed(1)} / ${(pool.gpuVramTotal / 1024 ** 3).toFixed(1)} GiB VRAM free` : 'telemetry pending'}</Text>
+                        </div>
                     </div>
                     <div className="fabric-pool-metric">
-                        <Text kind="body/regular/sm" className="text-subtle-color">Ready providers</Text>
-                        <Text kind="body/semibold/lg">{pool.cpuWorkers + pool.cudaWorkers + pool.metalWorkers}</Text>
-                        <Text kind="body/regular/sm" className="text-subtle-color">{pool.cpuWorkers} CPU · {pool.cudaWorkers} CUDA · {pool.metalWorkers} Metal</Text>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <Text kind="body/regular/sm" className="text-subtle-color">Ready providers</Text>
+                            <Text kind="body/semibold/lg">{pool.cpuWorkers + pool.cudaWorkers + pool.metalWorkers}</Text>
+                            <Text kind="body/regular/sm" className="text-subtle-color">{pool.cpuWorkers} CPU · {pool.cudaWorkers} CUDA · {pool.metalWorkers} Metal</Text>
+                        </div>
                     </div>
                 </div>
                 <Text kind="body/regular/sm" className="text-subtle-color">
