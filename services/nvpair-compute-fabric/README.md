@@ -229,6 +229,13 @@ The same operation is callable through `fabric:logical-device-execute` with a
 plan ID and epoch, so the desktop API has one typed entry point for future CUDA
 and Metal providers.
 
+When a plan assigns the input page to a paired worker with an advertised HTTPS
+endpoint, execution is routed through that worker. PAIR transfers the verified
+input page, invokes the worker's local provider at
+`POST /v1/fabric/logical-page/execute`, and fetches the verified output page.
+The endpoint requires the existing pinned cluster identity and validates the
+plan epoch. This is distributed page execution, not OS-level pooled VRAM.
+
 ## Test
 
 ```bash

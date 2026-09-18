@@ -109,6 +109,15 @@ local GPU staging path, not shared remote VRAM; the helper must be installed and
 selected explicitly, and it does not make CPU, DGX, AWS, or Metal memory appear
 as one Windows CUDA device.
 
+The execution data path now has a remote worker step. When the plan names a
+paired worker endpoint, the coordinator sends the input page over the
+authenticated page channel, calls `/v1/fabric/logical-page/execute` with the
+plan and current epoch, and retrieves the verified output page. The worker runs
+its configured local provider (CPU or the optional CUDA helper); the
+coordinator never sends a remote pointer to CUDA and never reports remote
+memory as local VRAM. If the endpoint is unavailable, the request fails rather
+than silently running on an unintended device.
+
 Sources: [CUDA multi-GPU programming](https://docs.nvidia.com/cuda/cuda-programming-guide/03-advanced/multi-gpu-systems.html),
 [CUDA virtual memory management](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/virtual-memory-management.html),
 [NVSHMEM](https://docs.nvidia.com/nvshmem/api/latest/introduction.html),

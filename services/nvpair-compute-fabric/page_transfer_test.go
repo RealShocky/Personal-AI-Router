@@ -11,6 +11,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"nvpair-shared/fabricwire"
 )
 
 func TestSendPageStreamsAndVerifiesPeerMetadata(t *testing.T) {
@@ -44,6 +46,50 @@ func TestSendPageStreamsAndVerifiesPeerMetadata(t *testing.T) {
 	}
 	if metadata.PageID != "page-1" || metadata.Digest != digest || metadata.Bytes != uint64(len(payload)) {
 		t.Fatalf("sendPage() metadata = %#v", metadata)
+	}
+}
+
+func TestRemoteLogicalPageExecutionRoundTrip(t *testing.T) {
+	store, err := NewPageStore(t.TempDir(), 1024)
+	if err != nil {
+		t.Fatalf("NewPageStore() error = %v", err)
+	}
+	const payload = "remote execution"
+	digest := pageDigest([]byte(payload))
+	plan := fabricwire.LogicalDevicePlan{Version: fabricwire.LogicalDeviceProtocolVersion, PlanID: "plan", Epoch: 7, Runtime: "pair", ModelDigest: "sha256:model", ShardStrategy: fabricwire.ShardPipeline, Workers: []fabricwire.WorkerAssignment{{WorkerID: "cuda-b", MemoryBudgetBytes: 1}}, Pages: []fabricwire.PagePlacement{{PageID: "out", WorkerID: "cuda-b", TierID: "host", Bytes: uint64(len(payload)), Digest: digest, Epoch: 7}}}
+	request := fabricwire.LogicalExecuteRequest{LogicalDeviceRequest: fabricwire.LogicalDeviceRequest{ProtocolVersion: fabricwire.LogicalDeviceProtocolVersion, RequestID: "request", PlanID: "plan", Epoch: 7}, Provider: fabricwire.ProviderCUDA, Operation: LogicalOperationCopy, InputPageID: "in", OutputPageID: "out"}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, httpRequest *http.Request) {
+		switch httpRequest.Method {
+		case http.MethodPost:
+			var envelope logicalRemoteExecuteRequest
+			if err := json.NewDecoder(httpRequest.Body).Decode(&envelope); err != nil || envelope.Plan.PlanID != plan.PlanID || envelope.Request.RequestID != request.RequestID {
+				http.Error(writer, "invalid execution envelope", http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(writer).Encode(fabricwire.LogicalExecuteResult{Provider: fabricwire.ProviderCUDA, Output: fabricwire.LogicalPageMetadata{PageID: "out", Bytes: uint64(len(payload)), Digest: digest}})
+		case http.MethodGet:
+			_, _ = writer.Write([]byte(payload))
+		default:
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	result, err := executeRemoteLogicalPage(context.Background(), http.DefaultClient, server.URL, plan, request)
+	if err != nil {
+		t.Fatalf("executeRemoteLogicalPage() error = %v", err)
+	}
+	if err := receivePage(context.Background(), http.DefaultClient, store, server.URL, result.Output.PageID, result.Output); err != nil {
+		t.Fatalf("receivePage() error = %v", err)
+	}
+	reader, metadata, err := store.Open(context.Background(), "out")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(reader)
+	if err != nil || string(data) != payload || metadata.Digest != digest {
+		t.Fatalf("received page = %q %#v, want verified payload", string(data), metadata)
 	}
 }
 

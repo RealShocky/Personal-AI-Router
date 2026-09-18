@@ -69,8 +69,7 @@ func NewLogicalDeviceManager(workers *Manager) *LogicalDeviceManager {
 func (m *LogicalDeviceManager) Execute(ctx context.Context, request fabricwire.LogicalExecuteRequest) (fabricwire.LogicalExecuteResult, error) {
 	m.mu.RLock()
 	plan, ok := m.plans[request.PlanID]
-	provider := m.providers[request.Provider]
-	store := m.pageStore
+	client, store := m.pageClient, m.pageStore
 	m.mu.RUnlock()
 	if !ok {
 		return fabricwire.LogicalExecuteResult{}, fmt.Errorf("logical device plan %q not found", request.PlanID)
@@ -78,14 +77,67 @@ func (m *LogicalDeviceManager) Execute(ctx context.Context, request fabricwire.L
 	if err := request.LogicalDeviceRequest.ValidateForEpoch(plan.Epoch); err != nil {
 		return fabricwire.LogicalExecuteResult{}, err
 	}
+	target, err := m.executionTarget(plan, request.InputPageID)
+	if err != nil {
+		return fabricwire.LogicalExecuteResult{}, err
+	}
+	if target.Endpoint != "" && client != nil {
+		if store == nil {
+			return fabricwire.LogicalExecuteResult{}, fmt.Errorf("remote logical execution requires a coordinator page store")
+		}
+		if _, err := sendPage(ctx, client, store, target.Endpoint, request.InputPageID); err != nil {
+			return fabricwire.LogicalExecuteResult{}, err
+		}
+		result, err := executeRemoteLogicalPage(ctx, client, target.Endpoint, plan, request)
+		if err != nil {
+			return fabricwire.LogicalExecuteResult{}, err
+		}
+		if err := receivePage(ctx, client, store, target.Endpoint, result.Output.PageID, result.Output); err != nil {
+			return fabricwire.LogicalExecuteResult{}, err
+		}
+		return result, nil
+	}
+	return m.executeLocal(ctx, plan, request)
+}
+
+func (m *LogicalDeviceManager) executeLocal(ctx context.Context, plan fabricwire.LogicalDevicePlan, request fabricwire.LogicalExecuteRequest) (fabricwire.LogicalExecuteResult, error) {
+	m.mu.RLock()
+	provider := m.providers[request.Provider]
+	store := m.pageStore
+	m.mu.RUnlock()
 	if provider == nil {
 		return fabricwire.LogicalExecuteResult{}, fmt.Errorf("logical provider %q is unavailable", request.Provider)
+	}
+	if err := request.LogicalDeviceRequest.ValidateForEpoch(plan.Epoch); err != nil {
+		return fabricwire.LogicalExecuteResult{}, err
 	}
 	result, err := provider.Execute(ctx, store, logicalExecuteRequest(request))
 	if err != nil {
 		return fabricwire.LogicalExecuteResult{}, err
 	}
 	return fabricwire.LogicalExecuteResult{Provider: request.Provider, Output: fabricwire.LogicalPageMetadata{PageID: result.Output.PageID, Bytes: result.Output.Bytes, Digest: result.Output.Digest}}, nil
+}
+
+func (m *LogicalDeviceManager) ExecuteRemote(ctx context.Context, plan fabricwire.LogicalDevicePlan, request fabricwire.LogicalExecuteRequest) (fabricwire.LogicalExecuteResult, error) {
+	if err := plan.Validate(); err != nil {
+		return fabricwire.LogicalExecuteResult{}, err
+	}
+	return m.executeLocal(ctx, plan, request)
+}
+
+func (m *LogicalDeviceManager) executionTarget(plan fabricwire.LogicalDevicePlan, pageID string) (fabricwire.WorkerAssignment, error) {
+	for _, page := range plan.Pages {
+		if page.PageID != pageID || page.Replica {
+			continue
+		}
+		for _, worker := range plan.Workers {
+			if worker.WorkerID == page.WorkerID {
+				return worker, nil
+			}
+		}
+		return fabricwire.WorkerAssignment{}, fmt.Errorf("logical page %q targets unknown worker %q", pageID, page.WorkerID)
+	}
+	return fabricwire.WorkerAssignment{}, fmt.Errorf("logical input page %q is not in the plan", pageID)
 }
 
 func (m *LogicalDeviceManager) Describe() fabricwire.LogicalDeviceDescribe {

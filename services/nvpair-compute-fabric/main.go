@@ -110,7 +110,7 @@ func main() {
 			if *coordinatorURL == "" {
 				coordinatorHTTP = trainingCoordinator
 			}
-			go serveFabricHTTP(ctx, *httpPort, *clusterDir, mgr, *rpcTarget, training, coordinatorHTTP, jobs, executions)
+			go serveFabricHTTP(ctx, *httpPort, *clusterDir, mgr, *rpcTarget, training, coordinatorHTTP, jobs, executions, logicalDevice)
 		}
 	}
 	if *rpcServerPath != "" {
@@ -497,14 +497,14 @@ func postFabricRejoin(ctx context.Context, client *http.Client, endpoint, worker
 	return json.NewDecoder(resp.Body).Decode(&result) == nil && result.Rejoined
 }
 
-func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Manager, rpcTarget string, training *TrainingManager, coordinator *TrainingCoordinator, jobs *JobStore, executions *ExecutionManager) {
+func serveFabricHTTP(ctx context.Context, port int, clusterDir string, mgr *Manager, rpcTarget string, training *TrainingManager, coordinator *TrainingCoordinator, jobs *JobStore, executions *ExecutionManager, logicalDevice *LogicalDeviceManager) {
 	mesh := clustertrust.Open(clusterDir)
 	go mesh.Watch(ctx, nil)
 	config := mesh.ServerTLSConfig()
 	server := &http.Server{
 		Addr:      fmt.Sprintf("0.0.0.0:%d", port),
 		TLSConfig: config,
-		Handler:   fabricHTTPHandlerWithCoordinator(mesh, mgr, rpcTarget, training, coordinator, jobs, executions, newLogicalPageStore(clusterDir)),
+		Handler:   fabricHTTPHandlerWithCoordinator(mesh, mgr, rpcTarget, training, coordinator, jobs, executions, newLogicalPageStore(clusterDir), logicalDevice),
 	}
 	listener, err := net.Listen("tcp", server.Addr)
 	if err != nil {
@@ -559,15 +559,11 @@ func fabricHTTPHandlerWithTraining(mesh *clustertrust.Mesh, mgr *Manager, rpcTar
 }
 
 func fabricHTTPHandlerWithExecution(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string, training *TrainingManager, jobs *JobStore, executions *ExecutionManager) http.Handler {
-	return fabricHTTPHandlerWithCoordinator(mesh, mgr, rpcTarget, training, nil, jobs, executions)
+	return fabricHTTPHandlerWithCoordinator(mesh, mgr, rpcTarget, training, nil, jobs, executions, nil, nil)
 }
 
-func fabricHTTPHandlerWithCoordinator(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string, training *TrainingManager, coordinator *TrainingCoordinator, jobs *JobStore, executions *ExecutionManager, pageStores ...*PageStore) http.Handler {
+func fabricHTTPHandlerWithCoordinator(mesh *clustertrust.Mesh, mgr *Manager, rpcTarget string, training *TrainingManager, coordinator *TrainingCoordinator, jobs *JobStore, executions *ExecutionManager, pageStore *PageStore, logicalDevice *LogicalDeviceManager) http.Handler {
 	mux := http.NewServeMux()
-	var pageStore *PageStore
-	if len(pageStores) > 0 {
-		pageStore = pageStores[0]
-	}
 	mux.HandleFunc("/v1/fabric/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -621,6 +617,29 @@ func fabricHTTPHandlerWithCoordinator(mesh *clustertrust.Mesh, mgr *Manager, rpc
 				w.WriteHeader(http.StatusMethodNotAllowed)
 			}
 		})
+		if logicalDevice != nil {
+			mux.HandleFunc("/v1/fabric/logical-page/execute", func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					w.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
+				if _, ok := mesh.VerifyClientPin(r); !ok {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+				var envelope logicalRemoteExecuteRequest
+				if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&envelope); err != nil {
+					http.Error(w, "invalid logical execution request", http.StatusBadRequest)
+					return
+				}
+				result, err := logicalDevice.ExecuteRemote(r.Context(), envelope.Plan, envelope.Request)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				writeJSON(w, result)
+			})
+		}
 	}
 	if jobs != nil && executions != nil {
 		mux.HandleFunc("/v1/fabric/inference/start", func(w http.ResponseWriter, r *http.Request) {
