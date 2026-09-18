@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core'
 import type { FabricStatus } from '@/shared/types/fabric'
 import { formatFabricGPUCapacity, formatFabricWorkerSummary } from './fabric-status-format'
+import { summarizeFabricPool } from './fabric-pool'
 
 const EMPTY_STATUS: FabricStatus = { workers: [], capacity: { workers: 0, memoryFree: 0, gpuVramTotal: 0, gpuVramFree: 0, gpuCount: 0 }, jobs: [], executions: [] }
 
@@ -44,6 +45,7 @@ export default function FabricStatusCard() {
     const ready = status.workers.filter(worker => worker.state === 'ready').length
     const liveExecutions = status.executions.filter(execution => execution.state === 'running').length
     const logicalProviders = status.logicalDevice?.providers ?? []
+    const pool = summarizeFabricPool(status)
     const providerSummary = logicalProviders.length === 0
         ? 'no provider capabilities reported'
         : logicalProviders.map(provider => `${provider.provider}:${provider.deviceId}`).join(' · ')
@@ -63,10 +65,30 @@ export default function FabricStatusCard() {
                     {ready} ready worker{ready === 1 ? '' : 's'} · {status.workers.length} paired ·{' '}
                     {liveExecutions} active job{liveExecutions === 1 ? '' : 's'}
                 </Text>
+                <div className="fabric-pool-grid" data-fabric-pool-summary>
+                    <div className="fabric-pool-metric fabric-pool-metric-primary">
+                        <Text kind="body/regular/sm" className="text-subtle-color">PAIR compute pool</Text>
+                        <Text kind="body/semibold/lg">{pool.readyWorkers} ready worker{pool.readyWorkers === 1 ? '' : 's'}</Text>
+                        <Text kind="body/regular/sm" className="text-subtle-color">{pool.pairedWorkers} paired · {pool.activeJobs + pool.activeExecutions} active workload{pool.activeJobs + pool.activeExecutions === 1 ? '' : 's'}</Text>
+                    </div>
+                    <div className="fabric-pool-metric">
+                        <Text kind="body/regular/sm" className="text-subtle-color">Schedulable host RAM</Text>
+                        <Text kind="body/semibold/lg">{(pool.memoryFree / 1024 ** 3).toFixed(1)} GiB</Text>
+                        <Text kind="body/regular/sm" className="text-subtle-color">offload and cache tier</Text>
+                    </div>
+                    <div className="fabric-pool-metric">
+                        <Text kind="body/regular/sm" className="text-subtle-color">GPU capacity</Text>
+                        <Text kind="body/semibold/lg">{pool.gpuCount} GPU{pool.gpuCount === 1 ? '' : 's'}</Text>
+                        <Text kind="body/regular/sm" className="text-subtle-color">{pool.gpuVramTotal > 0 ? `${(pool.gpuVramFree / 1024 ** 3).toFixed(1)} / ${(pool.gpuVramTotal / 1024 ** 3).toFixed(1)} GiB VRAM free` : 'telemetry pending'}</Text>
+                    </div>
+                    <div className="fabric-pool-metric">
+                        <Text kind="body/regular/sm" className="text-subtle-color">Ready providers</Text>
+                        <Text kind="body/semibold/lg">{pool.cpuWorkers + pool.cudaWorkers + pool.metalWorkers}</Text>
+                        <Text kind="body/regular/sm" className="text-subtle-color">{pool.cpuWorkers} CPU · {pool.cudaWorkers} CUDA · {pool.metalWorkers} Metal</Text>
+                    </div>
+                </div>
                 <Text kind="body/regular/sm" className="text-subtle-color">
-                    Logical ready capacity: {status.capacity.workers} worker{status.capacity.workers === 1 ? '' : 's'} ·{' '}
-                    {(status.capacity.memoryFree / 1024 ** 3).toFixed(1)} GiB host RAM ·{' '}
-                    {status.capacity.gpuCount > 0 ? `${(status.capacity.gpuVramFree / 1024 ** 3).toFixed(1)}/${(status.capacity.gpuVramTotal / 1024 ** 3).toFixed(1)} GiB VRAM free` : 'no reported NVIDIA VRAM'}
+                    The pool is PAIR’s logical scheduling view. Pages and model stages can move between workers; physical VRAM remains local to each device.
                 </Text>
                 <Text kind="body/regular/sm" className="text-subtle-color">
                     Logical providers: {providerSummary}. Memory tiers are explicit; capacity is schedulable, not contiguous VRAM.
@@ -87,6 +109,11 @@ export default function FabricStatusCard() {
                 {status.executions.length > 0 && (
                     <Text kind="body/regular/sm" className="text-subtle-color">
                         Executions: {status.executions.map(execution => `${execution.jobId} (${execution.phase || execution.state}${execution.workers.length > 0 ? ` on ${execution.workers.join(', ')}` : ''})`).join(' · ')}
+                    </Text>
+                )}
+                {pool.recoveringWorkers > 0 && (
+                    <Text kind="body/regular/sm" className="text-warning-color">
+                        {pool.recoveringWorkers} worker{pool.recoveringWorkers === 1 ? '' : 's'} recovering or quarantined; PAIR will re-admit it after a healthy handshake.
                     </Text>
                 )}
             </Stack>

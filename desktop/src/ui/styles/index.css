@@ -563,6 +563,31 @@ body .os-scrollbar {
     @apply p-4;
 }
 
+.fabric-pool-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin: 6px 0;
+}
+
+.fabric-pool-metric {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid color-mix(in srgb, var(--border-color, #ffffff) 14%, transparent);
+    background: color-mix(in srgb, var(--background-color-surface, #ffffff) 5%, transparent);
+}
+
+.fabric-pool-metric-primary {
+    border-color: color-mix(in srgb, var(--color-brand, #76b900) 55%, transparent);
+    background: color-mix(in srgb, var(--color-brand, #76b900) 10%, transparent);
+}
+
+@media (max-width: 850px) {
+    .fabric-pool-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 .pair-engines-inline
     .nv-switch-input:is(:disabled, [data-disabled]):is(:checked, [data-state='checked']):after {
     background-color: var(--background-color-interaction-primary-base);
