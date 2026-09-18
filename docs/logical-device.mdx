@@ -126,6 +126,15 @@ report the expected byte count and SHA-256 digest. This proves local CUDA
 allocation and host/device transfer on that worker; it does not prove a
 contiguous multi-host VRAM address space or an OS-visible virtual GPU.
 
+The same gate has now been exercised through the coordinator on the WSL RTX
+5060 worker. A fresh CUDA plan assigned one page to the DGX and one page to
+the WSL worker; the WSL page executed through its local CUDA helper and the
+retrieved 32-byte output matched the input SHA-256 digest. A heterogeneous
+three-worker plan also admitted AWS CPU host memory, DGX CUDA host memory, and
+WSL CUDA GPU memory in one versioned pipeline plan. These are independently
+verified page owners and execution providers, not a contiguous shared address
+space.
+
 The execution data path now has a remote worker step. When the plan names a
 paired worker endpoint, the coordinator sends the input page over the
 authenticated page channel, calls `/v1/fabric/logical-page/execute` with the
