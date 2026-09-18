@@ -92,14 +92,15 @@ headers into a bounded, atomic local page store. This is a PAIR data channel,
 not shared CUDA address space; CUDA/Metal adapters may optimize local copies,
 but ownership is published only after peer metadata verifies the bytes.
 
-The binary data channel is implemented and tested, and the first provider-level
-execution proof is the local CPU page-copy adapter. A queued transfer still
-means control-plane state until the configured source and destination stores
+The binary data channel is implemented and tested, and the CPU page-copy
+adapter remains the portable baseline. A queued transfer still means
+control-plane state until the configured source and destination stores
 complete the authenticated byte transfer. Aggregate capacity in the dashboard
 means schedulable fleet capacity, not a contiguous memory pool. The adapter
 creates a verified output page without exposing a pointer. CUDA and Metal
-execution remain provider-specific milestones and are not claimed by this CPU
-path. The operation is exposed through the typed
+execution remain provider-specific adapters; CUDA is verified when the
+optional helper is configured, while Metal remains an implementation
+milestone. The operation is exposed through the typed
 `fabric:logical-device-execute` API so future CUDA and Metal adapters can use
 the same plan-and-epoch contract.
 
@@ -107,7 +108,19 @@ An optional CUDA page provider now uses a separately built helper to allocate a
 local CUDA buffer and perform explicit host/device transfers. This is a real
 local GPU staging path, not shared remote VRAM; the helper must be installed and
 selected explicitly, and it does not make CPU, DGX, AWS, or Metal memory appear
-as one Windows CUDA device.
+as one Windows CUDA device. For a persistent Linux worker, set
+`PAIR_CUDA_PAGE_HELPER` when using `scripts/install-fabric-worker.sh`; the
+installer copies the helper into the PAIR installation and adds
+`--cuda-page-helper` to the managed service. If a worker is managed by a
+per-user systemd unit instead, the unit's `ExecStart` must carry the same
+flag, followed by `systemctl --user daemon-reload` and a service restart.
+
+The CUDA gate is verified independently of model serving by sending a small
+authenticated page to a paired DGX worker, invoking the `copy` operation with
+`provider: "cuda"`, and retrieving the output page. The returned page must
+report the expected byte count and SHA-256 digest. This proves local CUDA
+allocation and host/device transfer on that worker; it does not prove a
+contiguous multi-host VRAM address space or an OS-visible virtual GPU.
 
 The execution data path now has a remote worker step. When the plan names a
 paired worker endpoint, the coordinator sends the input page over the
