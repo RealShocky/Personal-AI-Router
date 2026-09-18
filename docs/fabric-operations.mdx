@@ -440,6 +440,15 @@ forwarded worker endpoint, keep the tunnel supervised, and treat loss of the
 tunnel as a worker failure. A one-way SSH login proves neither pairing nor
 distributed execution.
 
+The routed-worker path has been verified with an AWS CPU worker using a
+supervised bidirectional SSH tunnel. The coordinator reported three ready
+workers (DGX CUDA, WSL CUDA, and AWS CPU), planned a CPU page on AWS, executed
+the authenticated remote page copy, and retrieved the 20-byte output with a
+matching SHA-256 digest. This proves routed CPU execution and recovery
+plumbing; it is not a production network design. Replace the tunnel with a
+private VPN or equivalent controlled route before relying on a cloud worker
+continuously.
+
 ### DGX preflight
 
 Set the DGX address and SSH user for your environment. From the Windows
