@@ -50,6 +50,14 @@ func TestLogicalDeviceManagerExecutesCPUPageCopy(t *testing.T) {
 	}
 }
 
+func TestMetalProviderRequiresConfiguredHelper(t *testing.T) {
+	provider := NewMetalProvider("", "0")
+	_, err := provider.Execute(context.Background(), nil, LogicalExecuteRequest{Operation: LogicalOperationCopy})
+	if err == nil || !strings.Contains(err.Error(), "Metal page helper is not configured") {
+		t.Fatalf("Metal Execute() error = %v, want missing-helper error", err)
+	}
+}
+
 func TestLogicalDeviceManagerPlansCPUPageOnReadyWorker(t *testing.T) {
 	now := time.Now()
 	workers := NewManager(time.Minute)

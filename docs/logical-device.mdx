@@ -102,9 +102,10 @@ control-plane state until the configured source and destination stores
 complete the authenticated byte transfer. Aggregate capacity in the dashboard
 means schedulable fleet capacity, not a contiguous memory pool. The adapter
 creates a verified output page without exposing a pointer. CUDA and Metal
-execution remain provider-specific adapters; CUDA is verified when the
-optional helper is configured, while Metal remains an implementation
-milestone. The operation is exposed through the typed
+execution remain provider-specific adapters. CUDA is verified when the
+optional helper is configured, and macOS now has a Metal helper that uses a
+local `MTLDevice` and blit command to execute the same copy gate. The
+operation is exposed through the typed
 `fabric:logical-device-execute` API so future CUDA and Metal adapters can use
 the same plan-and-epoch contract.
 
@@ -118,6 +119,13 @@ installer copies the helper into the PAIR installation and adds
 `--cuda-page-helper` to the managed service. If a worker is managed by a
 per-user systemd unit instead, the unit's `ExecStart` must carry the same
 flag, followed by `systemctl --user daemon-reload` and a service restart.
+
+On macOS, build `scripts/build-metal-page.sh` on the target Mac and set
+`PAIR_METAL_PAGE_HELPER` before running `scripts/install-fabric-worker-macos.sh`.
+The release workflow packages an architecture-matched `pair-metal-page`
+helper in each macOS bundle. It copies pages through a local Metal buffer and
+command queue; it does not export a Metal pointer or combine Mac memory with
+CUDA VRAM.
 
 The CUDA gate is verified independently of model serving by sending a small
 authenticated page to a paired DGX worker, invoking the `copy` operation with

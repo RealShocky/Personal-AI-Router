@@ -82,8 +82,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/dist"
+          metal_target="arm64-apple-macosx14.0"
+          if [[ "${{ matrix.arch }}" == x64 ]]; then metal_target="x86_64-apple-macosx14.0"; fi
+          swiftc services/nvpair-compute-fabric/metal_page.swift -target "$metal_target" -framework Metal -O -o "$RUNNER_TEMP/fabric/pair-metal-page"
           PAIR_FABRIC_BINARY="$RUNNER_TEMP/fabric/nvpair-compute-fabric" \
           PAIR_CLUSTER_MANAGER_BINARY="$RUNNER_TEMP/fabric/nvpair-cluster-manager" \
+          PAIR_METAL_PAGE_HELPER="$RUNNER_TEMP/fabric/pair-metal-page" \
             bash scripts/package-fabric-macos.sh "$RUNNER_TEMP/dist"
           mv "$RUNNER_TEMP/dist/fabric-macos-$(uname -m).zip" "$RUNNER_TEMP/dist/fabric-macos-${{ matrix.arch }}.zip"
       - uses: actions/upload-artifact@v4

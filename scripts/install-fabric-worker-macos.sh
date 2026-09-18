@@ -16,6 +16,7 @@ PAIR_RPC_PORT="${PAIR_RPC_PORT:-50052}"
 PAIR_HTTP_PORT="${PAIR_HTTP_PORT:-14324}"
 PAIR_RPC_TARGET="${PAIR_RPC_TARGET:-127.0.0.1:${PAIR_RPC_PORT}}"
 PAIR_HEARTBEAT_TIMEOUT="${PAIR_HEARTBEAT_TIMEOUT:-10s}"
+PAIR_METAL_PAGE_HELPER="${PAIR_METAL_PAGE_HELPER:-}"
 
 if [[ "${PAIR_RUNTIME}" == auto ]]; then
   if command -v system_profiler >/dev/null 2>&1 && system_profiler SPDisplaysDataType >/dev/null 2>&1; then
@@ -29,7 +30,7 @@ if [[ -z "${PAIR_BACKEND}" ]]; then
 fi
 
 case "${PAIR_RUNTIME}" in metal|cpu) ;; *) echo "PAIR_RUNTIME must be metal or cpu" >&2; exit 2 ;; esac
-for value in PAIR_FABRIC_BINARY PAIR_CLUSTER_DIR PAIR_COORDINATOR_URL PAIR_WORKER_ID PAIR_NODE_ID PAIR_ADVERTISE_URL PAIR_BACKEND PAIR_RPC_SERVER_PATH; do
+for value in PAIR_FABRIC_BINARY PAIR_CLUSTER_DIR PAIR_COORDINATOR_URL PAIR_WORKER_ID PAIR_NODE_ID PAIR_ADVERTISE_URL PAIR_BACKEND PAIR_RPC_SERVER_PATH PAIR_METAL_PAGE_HELPER; do
   text="${!value:-}"
   case "${text}" in *$'\n'*|*$'\r'*) echo "${value} contains a newline" >&2; exit 2 ;; esac
 done
@@ -51,6 +52,7 @@ escape_xml() {
 
 args=(--daemon --heartbeat-timeout "${PAIR_HEARTBEAT_TIMEOUT}" --cluster-dir "${PAIR_CLUSTER_DIR}" --coordinator-url "${PAIR_COORDINATOR_URL}" --advertise-url "${PAIR_ADVERTISE_URL}" --worker-id "${PAIR_WORKER_ID}" --node-id "${PAIR_NODE_ID}" --runtime "${PAIR_RUNTIME}" --backend "${PAIR_BACKEND}" --http-port "${PAIR_HTTP_PORT}" --rpc-target "${PAIR_RPC_TARGET}" --rpc-port "${PAIR_RPC_PORT}")
 if [[ -n "${PAIR_RPC_SERVER_PATH}" ]]; then args+=(--rpc-server-path "${PAIR_RPC_SERVER_PATH}"); fi
+if [[ -n "${PAIR_METAL_PAGE_HELPER}" ]]; then args+=(--metal-page-helper "${PAIR_METAL_PAGE_HELPER}"); fi
 
 args_xml=""
 for arg in "${args[@]}"; do
