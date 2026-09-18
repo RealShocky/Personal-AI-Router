@@ -575,6 +575,61 @@ func fabricHTTPHandlerWithCoordinator(mesh *clustertrust.Mesh, mgr *Manager, rpc
 		}
 		writeJSON(w, map[string]any{"workers": mgr.Workers(), "capacity": mgr.Capacity()})
 	})
+	if coordinator != nil && logicalDevice != nil {
+		mux.HandleFunc("/v1/fabric/logical-device/describe", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if _, ok := mesh.VerifyClientPin(r); !ok {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			writeJSON(w, logicalDevice.Describe())
+		})
+		mux.HandleFunc("/v1/fabric/logical-device/plan", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if _, ok := mesh.VerifyClientPin(r); !ok {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			var request fabricwire.LogicalDevicePlanRequest
+			if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&request); err != nil {
+				http.Error(w, "invalid logical device plan request", http.StatusBadRequest)
+				return
+			}
+			plan, err := logicalDevice.Plan(request)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, plan)
+		})
+		mux.HandleFunc("/v1/fabric/logical-device/execute", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if _, ok := mesh.VerifyClientPin(r); !ok {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			var request fabricwire.LogicalExecuteRequest
+			if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&request); err != nil {
+				http.Error(w, "invalid logical device execution request", http.StatusBadRequest)
+				return
+			}
+			result, err := logicalDevice.Execute(r.Context(), request)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, result)
+		})
+	}
 	if pageStore != nil {
 		mux.HandleFunc("/v1/fabric/logical-page", func(w http.ResponseWriter, r *http.Request) {
 			if _, ok := mesh.VerifyClientPin(r); !ok {

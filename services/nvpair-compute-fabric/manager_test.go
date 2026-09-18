@@ -239,6 +239,18 @@ func TestManagerBuildsVersionedExecutionPlanFromLiveWorkers(t *testing.T) {
 	}
 }
 
+func TestRuntimeMatchesLogicalPairAcrossAcceleratorWorkers(t *testing.T) {
+	for _, runtime := range []string{"cpu", "cuda", "metal"} {
+		heartbeat := fabricwire.Heartbeat{Runtime: runtime, Backends: []string{runtime}}
+		if !runtimeMatches("pair", heartbeat) {
+			t.Fatalf("logical pair runtime did not match %s worker", runtime)
+		}
+	}
+	if runtimeMatches("pair", fabricwire.Heartbeat{Runtime: "llama.cpp"}) {
+		t.Fatal("logical pair runtime matched a worker without a hardware backend")
+	}
+}
+
 func TestReadyTrainingReplacementNodesReuseHealthyCurrentWorkers(t *testing.T) {
 	now := time.Now()
 	m := NewManager(time.Second)

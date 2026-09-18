@@ -5,10 +5,15 @@ package main
 
 import (
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
+
+	"nvpair-shared/clustertrust"
 )
 
 func TestChildEnvironmentAddsExecutableLibraryDirectoryOnUnix(t *testing.T) {
@@ -58,5 +63,36 @@ func TestFabricAcceptsSharedLogLevelValues(t *testing.T) {
 	}
 	if validLogLevel("verbose") {
 		t.Fatal("unsupported log level was accepted")
+	}
+}
+
+func TestCoordinatorLogicalDeviceHTTPRoutesRequirePinnedClient(t *testing.T) {
+	mgr := NewManager(time.Second)
+	logicalDevice := NewLogicalDeviceManager(mgr)
+	handler := fabricHTTPHandlerWithCoordinator(
+		clustertrust.Open(t.TempDir()),
+		mgr,
+		"127.0.0.1:1",
+		nil,
+		&TrainingCoordinator{},
+		nil,
+		nil,
+		nil,
+		logicalDevice,
+	)
+	for _, route := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/v1/fabric/logical-device/describe"},
+		{method: http.MethodPost, path: "/v1/fabric/logical-device/plan"},
+		{method: http.MethodPost, path: "/v1/fabric/logical-device/execute"},
+	} {
+		request := httptest.NewRequest(route.method, "https://fabric.invalid"+route.path, nil)
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("unauthenticated %s %s status = %d, want %d", route.method, route.path, recorder.Code, http.StatusForbidden)
+		}
 	}
 }

@@ -168,6 +168,11 @@ assignments, and page placements. A placement identifies a PAIR worker and
 memory tier; it is not a CUDA or Metal pointer and does not create contiguous
 VRAM.
 
+Use `runtime: "pair"` for a heterogeneous logical-device plan. It admits
+ready CPU, CUDA, and Metal workers, while `providers` still filters the
+concrete worker backends (for example, `providers: ["cuda"]`). Engine runtime
+names such as `llama.cpp` remain distinct from this logical-device runtime.
+
 Example request:
 
 ```json
@@ -235,6 +240,17 @@ input page, invokes the worker's local provider at
 `POST /v1/fabric/logical-page/execute`, and fetches the verified output page.
 The endpoint requires the existing pinned cluster identity and validates the
 plan epoch. This is distributed page execution, not OS-level pooled VRAM.
+
+The coordinator also exposes the same control plane over authenticated mTLS
+for headless operators:
+
+* `GET /v1/fabric/logical-device/describe`
+* `POST /v1/fabric/logical-device/plan`
+* `POST /v1/fabric/logical-device/execute`
+
+The coordinator routes `logical-device/execute` through the selected worker;
+the worker-only `logical-page/execute` endpoint is the authenticated internal
+stage. Both surfaces require the existing pinned cluster identity.
 
 ## Test
 

@@ -67,6 +67,10 @@ OS and local GPU APIs require. It can support heterogeneous CPU/CUDA/Metal
 workers through explicit adapters; it cannot honestly promise one pooled VRAM
 device to arbitrary existing CUDA or Metal applications.
 
+Use runtime `pair` when planning this heterogeneous logical device. The
+provider filter remains explicit, so a CUDA-only plan can request
+`providers: ["cuda"]` while a mixed CPU/CUDA/Metal plan can omit the filter.
+
 ## Current implementation boundary
 
 The fabric implements worker capability discovery, authenticated RPC-relay

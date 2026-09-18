@@ -328,6 +328,14 @@ func runtimeMatches(requestRuntime string, heartbeat fabricwire.Heartbeat) bool 
 	if heartbeat.Runtime == requestRuntime {
 		return true
 	}
+	if requestRuntime == "pair" {
+		for _, backend := range heartbeat.Backends {
+			if backend == "cpu" || backend == "cuda" || backend == "metal" {
+				return true
+			}
+		}
+		return false
+	}
 	if requestRuntime != "llama.cpp" {
 		return false
 	}
