@@ -242,6 +242,17 @@ The DGX wrapper exposes all GPUs by default; set its PAIR-owned
 `PAIR_TRAINING_CUDA_VISIBLE_DEVICES` environment variable to an explicit device
 list when isolating a canary.
 
+The DGX wrapper's image is environment-driven. Set `PAIR_TRAINING_IMAGE` to a
+locally available PyTorch image when the pinned default image is not present;
+the image must provide `torchrun` and the same CUDA/PyTorch ABI as the trainer.
+For example, a private DGX image can be selected without changing the wrapper:
+
+```bash
+export PAIR_TRAINING_IMAGE=qwen38-flash-dgx:latest
+export PAIR_TRAINING_HOST_ROOT=/home/admin/pair-fabric
+export PAIR_TRAINING_CONTAINER_ROOT=/opt/nvpair/training
+```
+
 NCCL's auxiliary sockets use the Linux kernel ephemeral-port range. Before a
 cross-machine training run, make that range match the PAIR firewall rule on
 each Linux node (the default PAIR range is `29401-29410`):
@@ -264,7 +275,12 @@ directory. A worker heartbeat or a launched PID is not training proof. WSL2's
 default NAT normally prevents inbound Gloo connections to the WSL address; use
 Windows mirrored networking or a routed network interface for heterogeneous
 WSL-to-Linux training. PAIR does not silently start a collective that cannot
-route its peer addresses.
+route its peer addresses. The validated DGX + WSL canary uses one rank per
+machine, the DGX address as rendezvous master, `NCCL_IB_DISABLE=1`, and
+`NCCL_P2P_DISABLE=1` on the routed Ethernet path; it completed with
+`worldSize: 2` and a SHA-256 checkpoint manifest. This validates collective
+training transport and checkpoint creation, not production-model quality or
+transparent VRAM pooling.
 
 ### Checkpoint handoff and automatic recovery
 
