@@ -424,6 +424,22 @@ fresh authenticated heartbeat. If a CUDA llama.cpp build already exists, pass
 its `ggml-rpc-server` through `PAIR_RPC_SERVER_PATH`; the installer supervises
 that helper without changing the source project or its models.
 
+### Cloud or routed Linux workers
+
+SSH access to a cloud VM is not enough to pair it. The worker must reach the
+coordinator's advertised HTTPS fabric address, and the coordinator must reach
+the worker's advertised HTTPS endpoint for page transfer, RPC relays, and
+recovery. Prefer a private VPN or overlay network with stable addresses. Do
+not expose ports `14321` or `14324` to the public internet just to make a cloud
+worker appear reachable.
+
+If a temporary SSH tunnel is the only available route, it must provide both
+directions: a reverse path from the worker to the coordinator and a local
+forward from the coordinator to the worker. Advertise the coordinator-visible
+forwarded worker endpoint, keep the tunnel supervised, and treat loss of the
+tunnel as a worker failure. A one-way SSH login proves neither pairing nor
+distributed execution.
+
 ### DGX preflight
 
 Set the DGX address and SSH user for your environment. From the Windows
