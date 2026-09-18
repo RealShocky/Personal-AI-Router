@@ -358,8 +358,11 @@ manifest. Archives intentionally exclude certificates, private keys, cluster
 state, SSH keys, and models.
 
 When building macOS artifacts on Windows, use
-`package-fabric-macos-cross.ps1` with a cross-compiled binary. It produces the
-same worker-only archive and SHA256 manifest as the native macOS packager.
+`package-fabric-macos-cross.ps1` with a cross-compiled worker binary. Pass the
+matching `-ClusterManagerBinary` when the archive must support first-time
+pairing on a headless Mac; the native `package-fabric-macos.sh` packager uses
+`PAIR_CLUSTER_MANAGER_BINARY` for the same optional file. Both produce a
+SHA256 manifest and exclude identities, keys, and models.
 
 On Windows, `package-fabric-windows.ps1` uses the staged service binary by
 default. To package a freshly built portable binary from another output
