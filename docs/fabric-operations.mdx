@@ -397,8 +397,10 @@ other paired nodes can reach; do not advertise the old NAT address.
 
 Use `install-fabric-worker-windows.ps1 -Task` to register a per-user logon
 task. It needs no administrator rights. For a Windows GPU, set
-`PAIR_RUNTIME=cuda` and use a CUDA-capable llama.cpp RPC build; otherwise use
-`cpu`. The optional `pair-cuda-page.exe` helper performs explicit GPU page
+Leave `PAIR_RUNTIME=auto` for the launcher to probe `nvidia-smi -L`, or set
+`PAIR_RUNTIME=cuda` explicitly. Use a CUDA-capable llama.cpp RPC build for
+model serving; otherwise use `cpu`. The optional `pair-cuda-page.exe` helper
+performs explicit GPU page
 staging (`cudaMalloc`, host/device copies, and synchronization); set
 `PAIR_CUDA_PAGE_HELPER=.\pair-cuda-page.exe` when it is included. It requires a
 compatible NVIDIA display driver and CUDA runtime on the host. The launcher

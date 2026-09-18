@@ -9,13 +9,24 @@ set -euo pipefail
 : "${PAIR_WORKER_ID:?stable worker UUID is required}"
 : "${PAIR_NODE_ID:?stable host UUID is required}"
 PAIR_ADVERTISE_URL="${PAIR_ADVERTISE_URL:-}"
-PAIR_RUNTIME="${PAIR_RUNTIME:-metal}"
-PAIR_BACKEND="${PAIR_BACKEND:-metal,cpu}"
+PAIR_RUNTIME="${PAIR_RUNTIME:-auto}"
+PAIR_BACKEND="${PAIR_BACKEND:-}"
 PAIR_RPC_SERVER_PATH="${PAIR_RPC_SERVER_PATH:-}"
 PAIR_RPC_PORT="${PAIR_RPC_PORT:-50052}"
 PAIR_HTTP_PORT="${PAIR_HTTP_PORT:-14324}"
 PAIR_RPC_TARGET="${PAIR_RPC_TARGET:-127.0.0.1:${PAIR_RPC_PORT}}"
 PAIR_HEARTBEAT_TIMEOUT="${PAIR_HEARTBEAT_TIMEOUT:-10s}"
+
+if [[ "${PAIR_RUNTIME}" == auto ]]; then
+  if command -v system_profiler >/dev/null 2>&1 && system_profiler SPDisplaysDataType >/dev/null 2>&1; then
+    PAIR_RUNTIME=metal
+  else
+    PAIR_RUNTIME=cpu
+  fi
+fi
+if [[ -z "${PAIR_BACKEND}" ]]; then
+  PAIR_BACKEND="${PAIR_RUNTIME}"
+fi
 
 case "${PAIR_RUNTIME}" in metal|cpu) ;; *) echo "PAIR_RUNTIME must be metal or cpu" >&2; exit 2 ;; esac
 for value in PAIR_FABRIC_BINARY PAIR_CLUSTER_DIR PAIR_COORDINATOR_URL PAIR_WORKER_ID PAIR_NODE_ID PAIR_ADVERTISE_URL PAIR_BACKEND PAIR_RPC_SERVER_PATH; do

@@ -39,8 +39,8 @@ PAIR_COORDINATOR_URL=https://coordinator.example:14324
 PAIR_WORKER_ID=linux-worker-01
 PAIR_NODE_ID=LINUX-01
 PAIR_CLUSTER_DIR=/var/lib/nvpair/cluster
-PAIR_RUNTIME=cpu
-PAIR_BACKEND=cpu
+PAIR_RUNTIME=auto
+PAIR_BACKEND=
 PAIR_TRAINING_HOST_ROOT=
 EOF
 if [[ -f "$STAGE/pair-cuda-page" ]]; then echo 'PAIR_CUDA_PAGE_HELPER=$PWD/pair-cuda-page' >> "$STAGE/fabric-worker.env.example"; fi

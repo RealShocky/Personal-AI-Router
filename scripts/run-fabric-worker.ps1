@@ -10,8 +10,8 @@ param(
     [string]$NodeId = $env:PAIR_NODE_ID,
     [string]$ClusterDir = $env:PAIR_CLUSTER_DIR,
     [string]$AdvertiseUrl = $env:PAIR_ADVERTISE_URL,
-    [ValidateSet('cpu','cuda','metal')][string]$Runtime = $(if ($env:PAIR_RUNTIME) { $env:PAIR_RUNTIME } else { 'cpu' }),
-    [string]$Backend = $(if ($env:PAIR_BACKEND) { $env:PAIR_BACKEND } else { 'cpu' }),
+    [ValidateSet('auto','cpu','cuda','metal')][string]$Runtime = $(if ($env:PAIR_RUNTIME) { $env:PAIR_RUNTIME } else { 'auto' }),
+    [string]$Backend = $(if ($env:PAIR_BACKEND) { $env:PAIR_BACKEND } else { '' }),
     [int]$HttpPort = $(if ($env:PAIR_HTTP_PORT) { [int]$env:PAIR_HTTP_PORT } else { 14324 }),
     [int]$HeartbeatTimeout = $(if ($env:PAIR_HEARTBEAT_TIMEOUT) { [int]$env:PAIR_HEARTBEAT_TIMEOUT } else { 10 }),
     [string]$Binary = $(Join-Path $PSScriptRoot 'nvpair-compute-fabric.exe')
@@ -23,6 +23,17 @@ foreach ($item in @{'CoordinatorUrl'=$CoordinatorUrl;'WorkerId'=$WorkerId;'NodeI
 }
 if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) { throw "Fabric binary not found: $Binary" }
 if (-not $AdvertiseUrl) { $AdvertiseUrl = "https://$([System.Net.Dns]::GetHostName()):$HttpPort" }
+
+if ($Runtime -eq 'auto') {
+    $nvidiaSmi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
+    if ($null -ne $nvidiaSmi) {
+        & $nvidiaSmi.Source -L *> $null
+        if ($LASTEXITCODE -eq 0) { $Runtime = 'cuda' } else { $Runtime = 'cpu' }
+    } else {
+        $Runtime = 'cpu'
+    }
+}
+if ([string]::IsNullOrWhiteSpace($Backend)) { $Backend = $Runtime }
 
 $arguments = @('--daemon','--cluster-dir',$ClusterDir,'--coordinator-url',$CoordinatorUrl,
     '--worker-id',$WorkerId,'--node-id',$NodeId,'--advertise-url',$AdvertiseUrl,

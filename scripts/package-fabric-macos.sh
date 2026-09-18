@@ -18,7 +18,7 @@ cp "$ROOT/docs/distributed-fabric.mdx" "$STAGE/"
 cp "$ROOT/docs/fabric-operations.mdx" "$STAGE/"
 cp "$ROOT/docs/README.md" "$STAGE/PAIR-documentation.md"
 printf '%s\n' 'PAIR Fabric portable macOS worker' 'Run install-fabric-worker-macos.sh after setting PAIR_* variables.' 'An optional nvpair-cluster-manager binary supports first-time pairing on a headless node.' 'No identities, keys, or models are included.' > "$STAGE/README.txt"
-printf '%s\n' 'PAIR_COORDINATOR_URL=https://coordinator.example:14324' 'PAIR_WORKER_ID=mac-worker-01' 'PAIR_NODE_ID=MAC-01' 'PAIR_CLUSTER_DIR=$HOME/Library/Application Support/PAIR/cluster' 'PAIR_RUNTIME=metal' 'PAIR_BACKEND=metal,cpu' > "$STAGE/fabric-worker.env.example"
+printf '%s\n' 'PAIR_COORDINATOR_URL=https://coordinator.example:14324' 'PAIR_WORKER_ID=mac-worker-01' 'PAIR_NODE_ID=MAC-01' 'PAIR_CLUSTER_DIR=$HOME/Library/Application Support/PAIR/cluster' 'PAIR_RUNTIME=auto' 'PAIR_BACKEND=' > "$STAGE/fabric-worker.env.example"
 chmod +x "$STAGE/nvpair-compute-fabric" "$STAGE/install-fabric-worker-macos.sh"
 if [[ -f "$STAGE/nvpair-cluster-manager" ]]; then
   (cd "$STAGE" && shasum -a 256 nvpair-compute-fabric nvpair-cluster-manager > SHA256SUMS)

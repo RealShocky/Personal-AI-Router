@@ -9,8 +9,8 @@ set -euo pipefail
 : "${PAIR_WORKER_ID:?stable worker UUID is required}"
 : "${PAIR_NODE_ID:?stable host UUID is required}"
 PAIR_ADVERTISE_URL="${PAIR_ADVERTISE_URL:-}"
-PAIR_RUNTIME="${PAIR_RUNTIME:-cpu}"
-PAIR_BACKEND="${PAIR_BACKEND:-cpu}"
+PAIR_RUNTIME="${PAIR_RUNTIME:-auto}"
+PAIR_BACKEND="${PAIR_BACKEND:-}"
 PAIR_RPC_SERVER_PATH="${PAIR_RPC_SERVER_PATH:-}"
 PAIR_RPC_PORT="${PAIR_RPC_PORT:-50052}"
 PAIR_LLAMA_SERVER_PATH="${PAIR_LLAMA_SERVER_PATH:-}"
@@ -29,6 +29,17 @@ if grep -qi microsoft /proc/version 2>/dev/null; then
   # Keep the service sandboxed everywhere else; WSL is already isolated by its
   # VM boundary and needs access to the mounted PAIR checkout and cluster dir.
   PAIR_PROTECT_SYSTEM=off
+fi
+
+if [[ "${PAIR_RUNTIME}" == auto ]]; then
+  if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+    PAIR_RUNTIME=cuda
+  else
+    PAIR_RUNTIME=cpu
+  fi
+fi
+if [[ -z "${PAIR_BACKEND}" ]]; then
+  PAIR_BACKEND="${PAIR_RUNTIME}"
 fi
 
 case "${PAIR_RUNTIME}" in cpu|cuda|metal) ;; *) echo "PAIR_RUNTIME must be cpu, cuda, or metal" >&2; exit 2 ;; esac
